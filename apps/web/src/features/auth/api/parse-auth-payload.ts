@@ -41,6 +41,8 @@ function parseUser(node: Record<string, unknown>): InternalUser | null {
   const organizationId =
     asString(node.organizationId) ?? asString(node.organization_id) ?? null;
   const active = typeof node.active === "boolean" ? node.active : true;
+  const onboardedAt =
+    asString(node.onboardedAt) ?? asString(node.onboarded_at) ?? null;
 
   if (!id || !email || !isUserRole(role)) {
     return null;
@@ -53,6 +55,7 @@ function parseUser(node: Record<string, unknown>): InternalUser | null {
     name: name ?? email,
     role,
     active,
+    onboardedAt,
   };
 }
 

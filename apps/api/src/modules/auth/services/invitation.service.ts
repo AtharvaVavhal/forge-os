@@ -26,6 +26,13 @@ export interface AcceptInvitationResult {
   email: string;
 }
 
+export interface InvitationPreviewResult {
+  email: string;
+  role: UserRole;
+  inviterName: string | null;
+  organizationName: string;
+}
+
 /**
  * `InvitationToken` security (Step 6) — the raw token is generated,
  * returned to the caller exactly once (to email/hand to the invitee), and
@@ -141,6 +148,43 @@ export class InvitationService {
     }
     this.assertCanManageInvitations(actor, invitation.scope);
     return invitation;
+  }
+
+  /**
+   * Public Gate preview — validates the raw token the same way accept does
+   * (generic failure for missing/expired/used/revoked) but does **not**
+   * consume `used_at`. TEAM-scope only: CLIENT invites are not part of the
+   * internal onboarding Gate. Never returns `token_hash` or the raw token.
+   */
+  async preview(rawToken: string): Promise<InvitationPreviewResult> {
+    const tokenHash = hashToken(rawToken);
+    const invitation = await this.prisma.invitationToken.findUnique({
+      where: { token_hash: tokenHash },
+      include: {
+        creator: { select: { name: true } },
+        organization: { select: { name: true } },
+      },
+    });
+
+    const invalidReason = this.validateAcceptable(invitation);
+    if (
+      invalidReason ||
+      !invitation ||
+      invitation.scope !== InvitationScope.TEAM ||
+      !invitation.user_role
+    ) {
+      throw new BadRequestException({
+        code: "INVITATION_INVALID",
+        message: "This invitation link is invalid or has expired.",
+      });
+    }
+
+    return {
+      email: invitation.email,
+      role: invitation.user_role,
+      inviterName: invitation.creator.name || null,
+      organizationName: invitation.organization.name,
+    };
   }
 
   async revoke(actor: AuthenticatedUser, id: string) {
@@ -261,7 +305,11 @@ export class InvitationService {
   }
 
   private validateAcceptable(
-    invitation: Awaited<ReturnType<PrismaService["invitationToken"]["findUnique"]>>
+    invitation: {
+      revoked_at: Date | null;
+      used_at: Date | null;
+      expires_at: Date;
+    } | null
   ): string | null {
     if (!invitation) return "not_found";
     if (invitation.revoked_at) return "revoked";

@@ -14,6 +14,8 @@ export interface AuthenticatedUser {
   role: UserRole;
   email: string;
   name: string;
+  active: boolean;
+  onboardedAt: Date | null;
 }
 
 export interface AuthenticatedRequest extends Request {

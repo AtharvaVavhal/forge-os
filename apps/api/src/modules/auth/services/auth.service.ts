@@ -16,6 +16,8 @@ export interface SessionUserView {
   name: string;
   role: string;
   organizationId: string;
+  active: boolean;
+  onboardedAt: string | null;
 }
 
 /** Generic — Document 6 §4.2's frozen requirement: "generic failure message." */
@@ -86,15 +88,15 @@ export class AuthService {
     // long comment in jwt-auth.guard.ts for why this ordering specifically
     // prevents a freshly-issued token from immediately invalidating itself
     // against its own `updated_at` bump.
-    await this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: { last_login_at: new Date() },
     });
 
     const { token, expiresInSeconds } = this.sessionService.signSession({
-      userId: user.id,
-      organizationId: user.organization_id,
-      role: user.role,
+      userId: updated.id,
+      organizationId: updated.organization_id,
+      role: updated.role,
     });
     this.sessionService.setSessionCookie(response, token, expiresInSeconds);
     this.csrfService.issueToken(response);
@@ -102,20 +104,14 @@ export class AuthService {
     await this.audit.record({
       organizationId,
       actorType: "USER",
-      actorId: user.id,
+      actorId: updated.id,
       action: AUDIT_ACTIONS.LOGIN_SUCCEEDED,
       entityType: "User",
-      entityId: user.id,
+      entityId: updated.id,
       ipAddress: request.ip,
     });
 
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      organizationId: user.organization_id,
-    };
+    return this.toSessionView(updated);
   }
 
   async logout(user: AuthenticatedUser | undefined, response: Response): Promise<void> {
@@ -148,11 +144,79 @@ export class AuthService {
       name: user.name,
       role: user.role,
       organizationId: user.organizationId,
+      active: user.active,
+      onboardedAt: user.onboardedAt ? user.onboardedAt.toISOString() : null,
     };
+  }
+
+  /**
+   * Marks first-run onboarding complete. Idempotent: if `onboarded_at` is
+   * already set, returns the current session view without writing.
+   *
+   * When a write occurs, `User.updated_at` bumps (Prisma `@updatedAt`) and
+   * would invalidate the caller's JWT via the security-stamp fence — so this
+   * method always re-issues `forge_session` after a successful first write.
+   */
+  async completeOnboarding(
+    user: AuthenticatedUser,
+    response: Response
+  ): Promise<SessionUserView> {
+    const existing = await this.prisma.user.findUnique({ where: { id: user.id } });
+    if (!existing || !existing.active) {
+      throw new UnauthorizedException({
+        code: "UNAUTHENTICATED",
+        message: "Authentication required.",
+      });
+    }
+    if (existing.organization_id !== user.organizationId) {
+      throw new UnauthorizedException({
+        code: "UNAUTHENTICATED",
+        message: "Authentication required.",
+      });
+    }
+
+    if (existing.onboarded_at) {
+      return this.toSessionView(existing);
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: existing.id },
+      data: { onboarded_at: new Date() },
+    });
+
+    const { token, expiresInSeconds } = this.sessionService.signSession({
+      userId: updated.id,
+      organizationId: updated.organization_id,
+      role: updated.role,
+    });
+    this.sessionService.setSessionCookie(response, token, expiresInSeconds);
+    this.csrfService.issueToken(response);
+
+    return this.toSessionView(updated);
   }
 
   permissions(user: AuthenticatedUser): Permission[] {
     return permissionsForRole(user.role);
+  }
+
+  private toSessionView(user: {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+    organization_id: string;
+    active: boolean;
+    onboarded_at: Date | null;
+  }): SessionUserView {
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      organizationId: user.organization_id,
+      active: user.active,
+      onboardedAt: user.onboarded_at ? user.onboarded_at.toISOString() : null,
+    };
   }
 
   private async recordFailedLogin(

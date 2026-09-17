@@ -1,6 +1,18 @@
-import { Body, Controller, Get, HttpCode, Post, Query, Req, Res, UnauthorizedException, UseInterceptors } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Post,
+  Query,
+  Req,
+  Res,
+  UseInterceptors,
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { Throttle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
+import type { AppConfig } from "../../../config/configuration";
 import { NoStoreCacheInterceptor } from "../../../common/interceptors/no-store-cache.interceptor";
 import { PrismaService } from "../../../database/prisma.service";
 import { AuditService, AUDIT_ACTIONS } from "../../shared/audit.service";
@@ -23,6 +35,9 @@ import { loginThrottle, passwordResetThrottle } from "../rate-limits";
  * routes live in `InvitationsController` instead — Document 5 places them
  * at `/invitations*`, not nested under `/auth`, even though Document 6
  * groups "auth" and "invitations" conceptually in the same module.
+ *
+ * Additive onboarding: `POST /auth/onboarding/complete` marks first-run
+ * complete and re-issues the session cookie (security-stamp safe).
  */
 @Controller("auth")
 export class AuthController {
@@ -34,7 +49,8 @@ export class AuthController {
     private readonly csrfService: CsrfService,
     private readonly prisma: PrismaService,
     private readonly organizationContext: OrganizationContextService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly config: ConfigService<AppConfig, true>
   ) {}
 
   @Public()
@@ -76,6 +92,15 @@ export class AuthController {
     return { permissions: this.authService.permissions(user) };
   }
 
+  @HttpCode(200)
+  @Post("onboarding/complete")
+  async completeOnboarding(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) response: Response
+  ) {
+    return this.authService.completeOnboarding(user, response);
+  }
+
   @Public()
   @Get("google/start")
   googleStart(@Res() response: Response) {
@@ -89,20 +114,25 @@ export class AuthController {
     @Query("code") code: string | undefined,
     @Query("state") state: string | undefined,
     @Req() request: Request,
-    @Res({ passthrough: true }) response: Response
+    @Res() response: Response
   ) {
     const cookies = request.cookies as Record<string, string | undefined> | undefined;
     const cookieState = cookies?.[GOOGLE_OAUTH_STATE_COOKIE];
     response.clearCookie(GOOGLE_OAUTH_STATE_COOKIE, { path: "/" });
 
+    const webOrigin = this.webAppOrigin();
+
     if (!code || !this.googleSsoService.verifyState(cookieState, state)) {
-      throw new UnauthorizedException({
-        code: "GOOGLE_SSO_STATE_MISMATCH",
-        message: "Google sign-in failed. Please try again.",
-      });
+      return response.redirect(`${webOrigin}/login?sso=failed`);
     }
 
-    const identity = await this.googleSsoService.exchangeCodeAndVerify(code);
+    let identity;
+    try {
+      identity = await this.googleSsoService.exchangeCodeAndVerify(code);
+    } catch {
+      return response.redirect(`${webOrigin}/login?sso=failed`);
+    }
+
     const organizationId = await this.organizationContext.resolveSingleOrganizationId();
 
     const user = await this.prisma.user.findUnique({
@@ -118,21 +148,24 @@ export class AuthController {
         entityType: "User",
         entityId: user?.id ?? "00000000-0000-0000-0000-000000000000",
       });
-      throw new UnauthorizedException({
-        code: "GOOGLE_SSO_NO_MATCHING_ACCOUNT",
-        message: "No active account matches this Google account.",
-      });
+      return response.redirect(`${webOrigin}/login?sso=no_match`);
     }
 
-    await this.prisma.user.update({
+    // Prefer Google display name when the invite-accept default left name === email.
+    const nameUpdate =
+      identity.name && user.name === user.email && identity.name !== user.name
+        ? { name: identity.name }
+        : {};
+
+    const updated = await this.prisma.user.update({
       where: { id: user.id },
-      data: { last_login_at: new Date() },
+      data: { last_login_at: new Date(), ...nameUpdate },
     });
 
     const { token, expiresInSeconds } = this.sessionService.signSession({
-      userId: user.id,
-      organizationId: user.organization_id,
-      role: user.role,
+      userId: updated.id,
+      organizationId: updated.organization_id,
+      role: updated.role,
     });
     this.sessionService.setSessionCookie(response, token, expiresInSeconds);
     this.csrfService.issueToken(response);
@@ -140,13 +173,14 @@ export class AuthController {
     await this.audit.record({
       organizationId,
       actorType: "USER",
-      actorId: user.id,
+      actorId: updated.id,
       action: AUDIT_ACTIONS.SSO_LOGIN_SUCCEEDED,
       entityType: "User",
-      entityId: user.id,
+      entityId: updated.id,
     });
 
-    return { id: user.id, email: user.email, name: user.name, role: user.role };
+    const destination = updated.onboarded_at ? "/dashboard" : "/onboarding";
+    return response.redirect(`${webOrigin}${destination}`);
   }
 
   @Public()
@@ -163,5 +197,11 @@ export class AuthController {
   @Post("password-reset/confirm")
   async confirmPasswordReset(@Body() dto: ConfirmPasswordResetDto) {
     await this.passwordResetService.confirm(dto.token, dto.password);
+  }
+
+  /** Browser SSO returns land on the first configured CORS origin (the web app). */
+  private webAppOrigin(): string {
+    const origins = this.config.get("cors.origins", { infer: true });
+    return (origins[0] ?? "http://localhost:3000").replace(/\/$/, "");
   }
 }

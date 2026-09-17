@@ -30,6 +30,7 @@ export function createAuthContext(overrides?: {
   role?: UserRole;
   permissions?: string[] | undefined;
   active?: boolean;
+  onboardedAt?: string | null;
 }): InternalAuthContext {
   return {
     user: {
@@ -39,6 +40,8 @@ export function createAuthContext(overrides?: {
       name: "Atharva",
       role: overrides?.role ?? "TEAM_MEMBER",
       active: overrides?.active ?? true,
+      onboardedAt:
+        overrides?.onboardedAt === undefined ? "2026-01-01T00:00:00.000Z" : overrides.onboardedAt,
     },
     permissions: overrides?.permissions,
   };

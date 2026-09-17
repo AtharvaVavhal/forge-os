@@ -6,17 +6,17 @@ import { CurrentUser } from "../decorators/current-user.decorator";
 import { Public } from "../decorators/public.decorator";
 import { AcceptInvitationDto } from "../dto/accept-invitation.dto";
 import { CreateInvitationDto } from "../dto/create-invitation.dto";
+import { PreviewInvitationDto } from "../dto/preview-invitation.dto";
 import { InvitationService } from "../services/invitation.service";
 import type { AuthenticatedUser } from "../types/authenticated-request.interface";
 import { invitationAcceptThrottle } from "../rate-limits";
 
 /**
- * Document 5 §3.2: `/invitations*`, not nested under `/auth` — the
- * accept endpoint is the sole public route here; create/get/revoke all
- * require authentication, with the actual TEAM-vs-CLIENT permission
- * split enforced inside `InvitationService.assertCanManageInvitations`
- * (Document 6 §2.3 — conditional on the invitation's `scope`, not a
- * single static permission).
+ * Document 5 §3.2: `/invitations*`, not nested under `/auth` — public
+ * routes are accept + preview; create/get/revoke require authentication,
+ * with the actual TEAM-vs-CLIENT permission split enforced inside
+ * `InvitationService.assertCanManageInvitations` (Document 6 §2.3 —
+ * conditional on the invitation's `scope`, not a single static permission).
  */
 @Controller("invitations")
 export class InvitationsController {
@@ -51,6 +51,14 @@ export class InvitationsController {
   @Post(":id/revoke")
   async revoke(@CurrentUser() user: AuthenticatedUser, @Param("id", ParseUUIDPipe) id: string) {
     await this.invitationService.revoke(user, id);
+  }
+
+  @Public()
+  @Throttle(invitationAcceptThrottle())
+  @HttpCode(200)
+  @Post("preview")
+  async preview(@Body() dto: PreviewInvitationDto) {
+    return this.invitationService.preview(dto.token);
   }
 
   @Public()

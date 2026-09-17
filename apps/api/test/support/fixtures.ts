@@ -32,6 +32,8 @@ export async function createTestUser(
     active?: boolean;
     organizationId?: string;
     emailSuffix?: string;
+    /** Defaults to true (already onboarded). Set false for onboarding e2e. */
+    onboarded?: boolean;
   }
 ): Promise<TestUserFixture> {
   const prisma = app.get(PrismaService);
@@ -52,6 +54,9 @@ export async function createTestUser(
       role: opts.role,
       password_hash: passwordHash,
       active: opts.active ?? true,
+      // Default onboarded so existing e2e flows behave as returning users.
+      // Pass `onboarded: false` when testing first-run onboarding.
+      onboarded_at: opts.onboarded === false ? null : new Date(),
     },
   });
 

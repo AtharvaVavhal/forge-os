@@ -443,3 +443,12 @@ h6 {
     background-color: var(--color-surface-sunken);
   }
 }
+
+@keyframes forge-onboard-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

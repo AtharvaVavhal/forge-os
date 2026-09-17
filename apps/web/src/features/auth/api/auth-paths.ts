@@ -8,4 +8,12 @@ export const AUTH_PATHS = {
   session: "auth/session",
   me: "auth/me",
   permissions: "auth/permissions",
+  passwordResetRequest: "auth/password-reset/request",
+  passwordResetConfirm: "auth/password-reset/confirm",
+  onboardingComplete: "auth/onboarding/complete",
+} as const;
+
+export const INVITATION_PATHS = {
+  preview: "invitations/preview",
+  accept: "invitations/accept",
 } as const;

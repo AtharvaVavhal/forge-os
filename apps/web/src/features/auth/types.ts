@@ -20,6 +20,8 @@ export interface InternalUser {
   name: string;
   role: UserRole;
   active: boolean;
+  /** ISO timestamp when first-run onboarding completed; null if not yet. */
+  onboardedAt: string | null;
 }
 
 export interface InternalAuthContext {

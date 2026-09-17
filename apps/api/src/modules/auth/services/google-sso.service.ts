@@ -13,6 +13,7 @@ const GOOGLE_SCOPES = ["openid", "email", "profile"];
 export interface GoogleVerifiedIdentity {
   email: string;
   emailVerified: boolean;
+  name: string | null;
 }
 
 /**
@@ -141,6 +142,10 @@ export class GoogleSsoService {
       });
     }
 
-    return { email: claims.email, emailVerified: claims.email_verified ?? false };
+    return {
+      email: claims.email,
+      emailVerified: claims.email_verified ?? false,
+      name: typeof claims.name === "string" && claims.name.length > 0 ? claims.name : null,
+    };
   }
 }

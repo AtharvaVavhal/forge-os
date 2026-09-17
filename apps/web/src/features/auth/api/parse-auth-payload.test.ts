@@ -11,6 +11,7 @@ describe("parseAuthContext", () => {
         name: "Atharva",
         role: "FOUNDER_ADMIN",
         active: true,
+        onboardedAt: "2026-01-01T00:00:00.000Z",
       },
       permissions: ["finance.manage", "crm.read"],
     });
@@ -20,9 +21,20 @@ describe("parseAuthContext", () => {
         id: "user-1",
         organizationId: "org-1",
         role: "FOUNDER_ADMIN",
+        onboardedAt: "2026-01-01T00:00:00.000Z",
       },
       permissions: ["finance.manage", "crm.read"],
     });
+  });
+
+  it("treats missing onboardedAt as null (not yet onboarded)", () => {
+    const parsed = parseAuthContext({
+      id: "user-2",
+      email: "ops@forgebuilds.in",
+      name: "Ops",
+      role: "OPERATIONS",
+    });
+    expect(parsed?.user.onboardedAt).toBeNull();
   });
 
   it("reads a bare user object", () => {

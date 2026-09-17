@@ -13,7 +13,7 @@ import { loginWithPassword } from "../api/auth-api";
 import { classifyLoginFailure, loginFailureMessage } from "../api/classify-auth-error";
 import { authQueryKeys } from "../api/query-keys";
 import { validateLoginForm, type LoginFieldErrors } from "../schemas/login-schema";
-import type { LoginRequest } from "../types";
+import type { InternalUser, LoginRequest } from "../types";
 
 export function LoginForm({
   expired = false,
@@ -21,7 +21,7 @@ export function LoginForm({
   googleSsoHref = getGoogleWorkspaceStartPath(),
 }: {
   expired?: boolean;
-  onLogin?: (input: LoginRequest) => Promise<void>;
+  onLogin?: (input: LoginRequest) => Promise<InternalUser | void>;
   googleSsoHref?: string | null;
 }) {
   const router = useRouter();
@@ -47,9 +47,10 @@ export function LoginForm({
 
   const mutation = useMutation({
     mutationFn: (input: LoginRequest) => onLogin(input),
-    onSuccess: async () => {
+    onSuccess: async (user) => {
       await queryClient.invalidateQueries({ queryKey: authQueryKeys.all });
-      router.replace("/dashboard");
+      const destination = user?.onboardedAt ? "/dashboard" : "/onboarding";
+      router.replace(destination);
       router.refresh();
     },
     onError: (error) => {
@@ -165,6 +166,15 @@ export function LoginForm({
           </button>
         </div>
       </Field>
+
+      <p className="text-right">
+        <a
+          href="/forgot-password"
+          className="font-display text-[length:var(--text-helper-size)] font-semibold text-steel hover:text-ink hover:underline"
+        >
+          Forgot password?
+        </a>
+      </p>
 
       <Button type="submit" variant="primary" size="lg" loading={submitting} className="mt-2 w-full">
         {submitting ? "Signing in" : "Sign in"}
