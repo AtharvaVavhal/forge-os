@@ -1,0 +1,16 @@
+export const projectPaths = {
+  projects: "/projects",
+  project: (id: string) => `/projects/${id}`,
+  status: (id: string) => `/projects/${id}/status`,
+  phase: (id: string) => `/projects/${id}/phase`,
+  handover: (id: string) => `/projects/${id}/handover-checklist`,
+  complete: (id: string) => `/projects/${id}/complete`,
+  milestones: (projectId: string) => `/projects/${projectId}/milestones`,
+  transitionMilestone: (id: string) => `/milestones/${id}/transition`,
+  tasks: (projectId: string) => `/projects/${projectId}/tasks`,
+  task: (id: string) => `/tasks/${id}`,
+  transitionTask: (id: string) => `/tasks/${id}/transition`,
+  assignTask: (id: string) => `/tasks/${id}/assign`,
+  timeEntries: (taskId: string) => `/tasks/${taskId}/time-entries`,
+  timeEntry: (id: string) => `/time-entries/${id}`,
+} as const;

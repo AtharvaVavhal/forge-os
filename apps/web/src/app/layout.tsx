@@ -4,17 +4,15 @@ import { Providers } from "@/providers";
 import "./globals.css";
 
 /**
- * Same three-family, same-weight setup as the marketing site
- * (`/Users/atharva/Forge/src/app/layout.tsx`) — Archivo at 600/700/800,
- * Source Serif 4 at 400, IBM Plex Mono at 400/500. Document B3 §27 flags
- * adding Archivo 400/500 as an open decision requiring Forge approval;
- * Phase 0 does not resolve that decision on its own, so this app loads
- * only the weights already proven on the marketing site.
+ * Archivo 400/500 are required for interface body, helper, and error text
+ * (Document 2 §4). Phase 0 left the addition flagged; auth forms cannot
+ * ship at 600-only without breaking the type-role rules, so the weights
+ * Document 2 names are loaded here.
  */
 const archivo = Archivo({
   variable: "--font-archivo",
   subsets: ["latin"],
-  weight: ["600", "700", "800"],
+  weight: ["400", "500", "600", "700", "800"],
   display: "swap",
 });
 
@@ -34,7 +32,7 @@ const ibmPlexMono = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: "FORGE Business OS",
-  description: "Internal operations platform for FORGE — Phase 0 foundation.",
+  description: "Internal operations platform for FORGE.",
   robots: { index: false, follow: false },
 };
 
@@ -44,7 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       lang="en"
       className={`${archivo.variable} ${sourceSerif.variable} ${ibmPlexMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full font-body">
+      <body className="min-h-full font-display">
         <Providers>{children}</Providers>
       </body>
     </html>

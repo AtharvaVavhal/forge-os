@@ -1,30 +1,46 @@
 "use client";
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
+import { isUnauthorizedError } from "@/features/auth/api/classify-auth-error";
+import { expireClientSession } from "@/lib/query/session-expiry";
 
 /**
- * The one place providers are composed for the whole app (Doc B3 §1). Only
- * TanStack Query exists yet — Step 6's approved server-state mechanism.
- * Toast/CommandPalette providers are added once those components exist in
- * Phase 2; no global client-state library (Redux/Zustand/MobX) is added
- * here or anywhere else, per Step 6 and Doc B3 §9.
+ * The one place providers are composed for the whole app (Doc B3 §1).
+ * TanStack Query holds server state. No Redux/Zustand/MobX.
  */
 export function Providers({ children }: { children: React.ReactNode }) {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            // Conservative default for Phase 0 — individual features tune
-            // staleTime per entity volatility once real queries exist
-            // (Doc B3 §6).
-            staleTime: 30_000,
-            retry: 1,
+  const [queryClient] = useState(() => {
+    const client = new QueryClient({
+      queryCache: new QueryCache({
+        onError: (error) => {
+          if (isUnauthorizedError(error)) {
+            expireClientSession(client);
+          }
+        },
+      }),
+      mutationCache: new MutationCache({
+        onError: (error) => {
+          if (isUnauthorizedError(error)) {
+            expireClientSession(client);
+          }
+        },
+      }),
+      defaultOptions: {
+        queries: {
+          staleTime: 30_000,
+          retry: (failureCount, error) => {
+            if (isUnauthorizedError(error)) return false;
+            return failureCount < 1;
           },
         },
-      })
-  );
+        mutations: {
+          retry: false,
+        },
+      },
+    });
+    return client;
+  });
 
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }

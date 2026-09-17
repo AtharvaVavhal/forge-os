@@ -2,13 +2,15 @@
   "name": "@forge/web",
   "version": "0.1.0",
   "private": true,
-  "description": "FORGE Business OS — Next.js frontend. Phase 0 foundation only: App Router shell, (auth)/(workspace) route groups, design tokens, TanStack Query + typed API client wiring. No domain pages (dashboard widgets, CRM, Sales, Projects, Finance, Team, Settings, Portal) are implemented yet — see docs/IMPLEMENTATION-PHASE-0.md.",
+  "description": "FORGE Business OS — Next.js frontend. Phase 1 adds the authentication UI foundation on the Phase 0 App Router shell.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@forge/api-client": "*",
@@ -21,12 +23,19 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^5.2.0",
     "eslint": "^9.17.0",
     "eslint-config-next": "^16.3.5",
+    "jsdom": "^30.1.0",
     "tailwindcss": "^4.3.3",
-    "typescript": "5.9.2"
+    "typescript": "5.9.2",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^3.2.7"
   }
 }

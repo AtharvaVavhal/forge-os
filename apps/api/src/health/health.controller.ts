@@ -1,6 +1,7 @@
 import { Controller, Get } from "@nestjs/common";
 import { HealthCheck, HealthCheckService, PrismaHealthIndicator } from "@nestjs/terminus";
 import { PrismaService } from "../database/prisma.service";
+import { Public } from "../modules/auth/decorators/public.decorator";
 
 /**
  * Three endpoints, all under the frozen `/api/v1` prefix (Document 5 §2.1 —
@@ -21,6 +22,7 @@ import { PrismaService } from "../database/prisma.service";
  * hand-rolled indicator — it already does the right thing (a real
  * `SELECT 1`-equivalent ping with a timeout) against our `PrismaService`.
  */
+@Public()
 @Controller("health")
 export class HealthController {
   constructor(

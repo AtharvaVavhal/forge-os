@@ -244,3 +244,202 @@ h6 {
   outline-offset: 2px;
   border-radius: 2px;
 }
+
+[data-surface="inverse"] :focus-visible {
+  outline-color: var(--color-ember-bright);
+}
+
+/* Typography primitives (Document 2 §4) — Archivo for UI, IBM Plex Mono
+   for meta, Source Serif 4 only via .type-prose for genuine long-form. */
+.type-page-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-page-title-size);
+  line-height: var(--text-page-title-leading);
+  letter-spacing: var(--text-page-title-tracking);
+}
+
+.type-section-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-section-title-size);
+  line-height: var(--text-section-title-leading);
+}
+
+.type-subsection {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--text-subsection-size);
+  line-height: var(--text-subsection-leading);
+}
+
+.type-body {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--text-body-size);
+  line-height: var(--text-body-leading);
+}
+
+.type-body-small {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--text-body-small-size);
+  line-height: var(--text-body-small-leading);
+}
+
+.type-label {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--text-label-size);
+  line-height: var(--text-label-leading);
+}
+
+.type-mono-label {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: var(--text-mono-label-size);
+  line-height: var(--text-mono-label-leading);
+  letter-spacing: var(--text-mono-label-tracking);
+  text-transform: uppercase;
+}
+
+.type-metadata {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: var(--text-metadata-size);
+  line-height: var(--text-metadata-leading);
+  letter-spacing: var(--text-metadata-tracking);
+}
+
+.type-table-header {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: var(--text-table-header-size);
+  line-height: 1.3;
+  letter-spacing: var(--text-table-header-tracking);
+  text-transform: uppercase;
+}
+
+.type-helper {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: var(--text-helper-size);
+  line-height: var(--text-metadata-leading);
+}
+
+.type-error {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: var(--text-error-size);
+  line-height: var(--text-metadata-leading);
+  color: var(--color-ember-deep);
+}
+
+.type-prose {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+.border-hairline {
+  border-color: color-mix(in srgb, var(--color-steel) 15%, transparent);
+}
+
+.elevation-0 {
+  box-shadow: var(--elevation-0);
+}
+.elevation-1 {
+  box-shadow: var(--elevation-1);
+}
+.elevation-2 {
+  box-shadow: var(--elevation-2);
+}
+.elevation-3 {
+  box-shadow: var(--elevation-3);
+}
+
+@keyframes forge-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.skeleton-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-surface-sunken) 0%,
+    color-mix(in srgb, var(--color-steel) 10%, var(--color-surface-sunken)) 50%,
+    var(--color-surface-sunken) 100%
+  );
+  background-size: 200% 100%;
+  animation: forge-shimmer var(--duration-shimmer) linear infinite;
+}
+
+/* --- Workspace shell: CSS-first sidebar (Doc 2 §22 / Doc B3 §3) ---
+   Width and label visibility follow the viewport, not a JS layout branch.
+   `data-collapsed` is only a user override of the CSS default. */
+.workspace-sidebar-persistent {
+  width: 16rem;
+}
+
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .workspace-sidebar-persistent:not([data-collapsed="false"]) {
+    width: 4rem;
+  }
+  .workspace-sidebar-persistent:not([data-collapsed="false"]) .sidebar-expanded-only {
+    display: none;
+  }
+  .workspace-sidebar-persistent:not([data-collapsed="false"]) .nav-item {
+    justify-content: center;
+    padding-inline: 0.75rem;
+  }
+  .workspace-sidebar-persistent:not([data-collapsed="false"]) .sidebar-mark-full {
+    display: none;
+  }
+  .workspace-sidebar-persistent[data-collapsed="false"] .sidebar-mark-compact {
+    display: none;
+  }
+}
+
+@media (min-width: 1280px) {
+  .workspace-sidebar-persistent:not([data-collapsed="true"]) .sidebar-mark-compact {
+    display: none;
+  }
+  .workspace-sidebar-persistent[data-collapsed="true"] {
+    width: 4rem;
+  }
+  .workspace-sidebar-persistent[data-collapsed="true"] .sidebar-expanded-only,
+  .workspace-sidebar-persistent[data-collapsed="true"] .sidebar-mark-full {
+    display: none;
+  }
+  .workspace-sidebar-persistent[data-collapsed="true"] .nav-item {
+    justify-content: center;
+    padding-inline: 0.75rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .workspace-sidebar-persistent[data-collapsed="true"] .sidebar-expanded-only,
+  .workspace-sidebar-persistent[data-collapsed="true"] .sidebar-mark-full {
+    display: none;
+  }
+  .workspace-sidebar-persistent[data-collapsed="true"] .sidebar-mark-compact {
+    display: inline;
+  }
+  .workspace-sidebar-persistent[data-collapsed="true"] .nav-item {
+    justify-content: center;
+    padding-inline: 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer {
+    animation: none;
+    background-image: none;
+    background-color: var(--color-surface-sunken);
+  }
+}

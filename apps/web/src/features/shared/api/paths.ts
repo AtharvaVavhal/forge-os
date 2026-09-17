@@ -1,0 +1,14 @@
+export const sharedPaths = {
+  activities: "/activities",
+  notes: "/notes",
+  note: (id: string) => `/notes/${id}`,
+  documents: "/documents",
+  presignUpload: "/documents/presign-upload",
+  document: (id: string) => `/documents/${id}`,
+  documentDownload: (id: string) => `/documents/${id}/download-url`,
+  documentDelete: (id: string) => `/documents/${id}/delete`,
+  notifications: "/notifications",
+  notificationRead: (id: string) => `/notifications/${id}/read`,
+  auditLogs: "/audit-logs",
+  search: "/search",
+} as const;
