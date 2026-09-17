@@ -1,0 +1,1162 @@
+// FORGE Business OS — Production Prisma Schema
+// Source of truth: Architecture Red-Team Review (Doc 1) + Database Specification Frozen v1 (Doc 2)
+// Conflict resolutions (frozen):
+//   1. Invoice/Payment: NO soft-delete — VOID/CANCELLED and REVERSED only
+//   2. Project: NO archived_at/deleted_at — lifecycle statuses only
+//   3. CreditNoteSequence: explicit FY-scoped counter, separate from InvoiceSequence
+//
+// Do not add product features. Do not redesign the entity model.
+// Constraints Prisma cannot express (polymorphic CHECKs, partial uniques, AuditLog REVOKE,
+// GIN FTS) live in prisma/sql/ and must be applied as hand-edited migration steps.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  FOUNDER_ADMIN
+  OPERATIONS
+  FINANCE
+  SALES
+  TEAM_MEMBER
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  CONVERTED
+  DISQUALIFIED
+}
+
+enum LeadSource {
+  REFERRAL
+  INBOUND_FORM
+  COLD_OUTREACH
+  LINKEDIN
+  PAST_CLIENT
+  EVENT
+  OTHER
+}
+
+enum DealStage {
+  NEW
+  CONTACTED
+  QUALIFIED
+  DISCOVERY
+  PROPOSAL_SENT
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum DealLostReason {
+  PRICE
+  TIMING
+  CHOSE_COMPETITOR
+  NO_BUDGET
+  GHOSTED
+  NOT_A_FIT
+  OTHER
+}
+
+enum ProposalStatus {
+  DRAFT
+  SENT
+  VIEWED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ON_HOLD
+  AT_RISK
+  COMPLETED
+  CANCELLED
+}
+
+enum ProjectPhase {
+  PLANNING
+  DESIGN
+  DEVELOPMENT
+  QA
+  CLIENT_REVIEW
+  DEPLOYMENT
+  HANDOVER
+  COMPLETED
+}
+
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  AWAITING_APPROVAL
+  COMPLETED
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  VOID
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+enum PaymentMethod {
+  RAZORPAY
+  CASH
+  BANK_TRANSFER
+  CHEQUE
+}
+
+enum RefundStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum CreditNoteReason {
+  SCOPE_REDUCTION
+  PRICING_ERROR
+  CANCELLATION
+  GOODWILL
+  OTHER
+}
+
+enum ForgeFundEntryType {
+  CONTRIBUTION
+  WITHDRAWAL
+  ALLOCATION
+}
+
+enum MaintenanceStatus {
+  ACTIVE
+  EXPIRED
+  RENEWED
+  CANCELLED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_CLIENT
+  RESOLVED
+  CLOSED
+  REOPENED
+}
+
+enum DocumentCategory {
+  PROPOSAL
+  CONTRACT
+  INVOICE
+  RECEIPT
+  HANDOVER
+  REQUIREMENT
+  CLIENT_ASSET
+  INTERNAL
+}
+
+enum Visibility {
+  INTERNAL
+  CLIENT_VISIBLE
+}
+
+enum TaxTreatment {
+  CGST_SGST
+  IGST
+  EXEMPT
+}
+
+enum ActorType {
+  USER
+  CLIENT_USER
+  SYSTEM
+}
+
+enum RecipientType {
+  USER
+  CLIENT_USER
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+}
+
+enum InvitationScope {
+  TEAM
+  CLIENT
+}
+
+enum WebhookSource {
+  RAZORPAY
+}
+
+enum WebhookStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+}
+
+enum DomainEventStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+// ─── Platform / Shared ───────────────────────────────────────────────────────
+
+model Organization {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  gstin           String?
+  billing_state   String
+  billing_address String
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @updatedAt @db.Timestamptz(6)
+
+  users                  User[]
+  client_users           ClientUser[]
+  invitation_tokens      InvitationToken[]
+  tax_rates              TaxRate[]
+  invoice_sequences      InvoiceSequence[]
+  credit_note_sequences  CreditNoteSequence[]
+  activities             Activity[]
+  notes                  Note[]
+  documents              Document[]
+  notifications          Notification[]
+  audit_logs             AuditLog[]
+  webhook_events         WebhookEvent[]
+  domain_events          DomainEvent[]
+  companies              Company[]
+  contacts               Contact[]
+  leads                  Lead[]
+  deals                  Deal[]
+  proposals              Proposal[]
+  projects               Project[]
+  milestones             Milestone[]
+  tasks                  Task[]
+  time_entries           TimeEntry[]
+  invoices               Invoice[]
+  invoice_line_items     InvoiceLineItem[]
+  payments               Payment[]
+  refunds                Refund[]
+  credit_notes           CreditNote[]
+  credit_note_line_items CreditNoteLineItem[]
+  expenses               Expense[]
+  forge_fund_entries     ForgeFundEntry[]
+  maintenance_contracts  MaintenanceContract[]
+  support_tickets        SupportTicket[]
+  proposal_line_items    ProposalLineItem[]
+
+  @@map("organizations")
+}
+
+model User {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String    @db.Uuid
+  email           String
+  name            String
+  role            UserRole
+  password_hash   String?
+  active          Boolean   @default(true)
+  last_login_at   DateTime? @db.Timestamptz(6)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+
+  invitations_created   InvitationToken[] @relation("InvitationCreatedBy")
+  activities_created    Activity[]        @relation("ActivityCreatedBy")
+  notes_created         Note[]            @relation("NoteCreatedBy")
+  documents_uploaded    Document[]        @relation("DocumentUploadedBy")
+  deals_owned           Deal[]            @relation("DealOwner")
+  proposals_created     Proposal[]        @relation("ProposalCreatedBy")
+  projects_owned        Project[]         @relation("ProjectOwner")
+  tasks_assigned        Task[]            @relation("TaskAssignee")
+  time_entries          TimeEntry[]
+  payments_recorded     Payment[]         @relation("PaymentRecordedBy")
+  refunds_approved      Refund[]          @relation("RefundApprovedBy")
+  credit_notes_approved CreditNote[]      @relation("CreditNoteApprovedBy")
+  expenses_recorded     Expense[]         @relation("ExpenseRecordedBy")
+  forge_fund_entries    ForgeFundEntry[]  @relation("ForgeFundApprovedBy")
+
+  @@unique([organization_id, email])
+  @@index([organization_id])
+  @@map("users")
+}
+
+model ClientUser {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String    @db.Uuid
+  company_id      String    @db.Uuid
+  contact_id      String?   @db.Uuid
+  email           String
+  password_hash   String?
+  active          Boolean   @default(true)
+  last_login_at   DateTime? @db.Timestamptz(6)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  company      Company      @relation(fields: [company_id], references: [id], onDelete: Restrict)
+  contact      Contact?     @relation(fields: [contact_id], references: [id], onDelete: SetNull)
+
+  support_tickets SupportTicket[]
+
+  @@unique([organization_id, email])
+  @@index([organization_id])
+  @@index([company_id])
+  @@index([contact_id])
+  @@map("client_users")
+}
+
+model InvitationToken {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String          @db.Uuid
+  token_hash      String          @unique
+  scope           InvitationScope
+  email           String
+  user_role       UserRole?
+  company_id      String?         @db.Uuid
+  expires_at      DateTime        @db.Timestamptz(6)
+  used_at         DateTime?       @db.Timestamptz(6)
+  revoked_at      DateTime?       @db.Timestamptz(6)
+  created_by      String          @db.Uuid
+  created_at      DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime        @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  company      Company?     @relation(fields: [company_id], references: [id], onDelete: Restrict)
+  creator      User         @relation("InvitationCreatedBy", fields: [created_by], references: [id], onDelete: Restrict)
+
+  @@index([organization_id])
+  @@index([company_id])
+  @@index([created_by])
+  @@map("invitation_tokens")
+}
+
+model TaxRate {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String    @db.Uuid
+  hsn_sac_code    String
+  description     String
+  cgst_rate       Decimal   @db.Decimal(5, 2)
+  sgst_rate       Decimal   @db.Decimal(5, 2)
+  igst_rate       Decimal   @db.Decimal(5, 2)
+  effective_from  DateTime  @db.Date
+  effective_to    DateTime? @db.Date
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @updatedAt @db.Timestamptz(6)
+
+  organization        Organization       @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  proposal_line_items ProposalLineItem[]
+
+  @@index([organization_id])
+  @@index([organization_id, hsn_sac_code])
+  @@map("tax_rates")
+}
+
+model InvoiceSequence {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String   @db.Uuid
+  financial_year  String
+  last_number     Int      @default(0)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+
+  @@unique([organization_id, financial_year])
+  @@map("invoice_sequences")
+}
+
+/// Explicit FY-scoped counter for Credit Notes — never share InvoiceSequence.
+model CreditNoteSequence {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String   @db.Uuid
+  financial_year  String
+  last_number     Int      @default(0)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+
+  @@unique([organization_id, financial_year])
+  @@map("credit_note_sequences")
+}
+
+model Activity {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String   @db.Uuid
+  type            String
+  summary         String
+  occurred_at     DateTime @default(now()) @db.Timestamptz(6)
+  company_id      String?  @db.Uuid
+  contact_id      String?  @db.Uuid
+  deal_id         String?  @db.Uuid
+  project_id      String?  @db.Uuid
+  created_by      String   @db.Uuid
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  company      Company?     @relation(fields: [company_id], references: [id], onDelete: Restrict)
+  contact      Contact?     @relation(fields: [contact_id], references: [id], onDelete: Restrict)
+  deal         Deal?        @relation(fields: [deal_id], references: [id], onDelete: Restrict)
+  project      Project?     @relation(fields: [project_id], references: [id], onDelete: Restrict)
+  creator      User         @relation("ActivityCreatedBy", fields: [created_by], references: [id], onDelete: Restrict)
+
+  @@index([organization_id])
+  @@index([company_id, occurred_at(sort: Desc)])
+  @@index([contact_id, occurred_at(sort: Desc)])
+  @@index([deal_id, occurred_at(sort: Desc)])
+  @@index([project_id, occurred_at(sort: Desc)])
+  @@index([created_by])
+  @@map("activities")
+}
+
+model Note {
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String     @db.Uuid
+  body            String     @db.Text
+  visibility      Visibility @default(INTERNAL)
+  company_id      String?    @db.Uuid
+  contact_id      String?    @db.Uuid
+  deal_id         String?    @db.Uuid
+  project_id      String?    @db.Uuid
+  created_by      String     @db.Uuid
+  created_at      DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime   @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  company      Company?     @relation(fields: [company_id], references: [id], onDelete: Restrict)
+  contact      Contact?     @relation(fields: [contact_id], references: [id], onDelete: Restrict)
+  deal         Deal?        @relation(fields: [deal_id], references: [id], onDelete: Restrict)
+  project      Project?     @relation(fields: [project_id], references: [id], onDelete: Restrict)
+  creator      User         @relation("NoteCreatedBy", fields: [created_by], references: [id], onDelete: Restrict)
+
+  @@index([organization_id])
+  @@index([company_id, created_at(sort: Desc)])
+  @@index([contact_id, created_at(sort: Desc)])
+  @@index([deal_id, created_at(sort: Desc)])
+  @@index([project_id, created_at(sort: Desc)])
+  @@index([created_by])
+  @@map("notes")
+}
+
+model Document {
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String           @db.Uuid
+  filename        String
+  storage_key     String
+  mime_type       String
+  size_bytes      Int
+  category        DocumentCategory
+  visibility      Visibility       @default(INTERNAL)
+  company_id      String?          @db.Uuid
+  contact_id      String?          @db.Uuid
+  deal_id         String?          @db.Uuid
+  project_id      String?          @db.Uuid
+  invoice_id      String?          @db.Uuid
+  uploaded_by     String           @db.Uuid
+  deleted_at      DateTime?        @db.Timestamptz(6)
+  created_at      DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime         @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  company      Company?     @relation(fields: [company_id], references: [id], onDelete: Restrict)
+  contact      Contact?     @relation(fields: [contact_id], references: [id], onDelete: Restrict)
+  deal         Deal?        @relation(fields: [deal_id], references: [id], onDelete: Restrict)
+  project      Project?     @relation(fields: [project_id], references: [id], onDelete: Restrict)
+  invoice      Invoice?     @relation(fields: [invoice_id], references: [id], onDelete: Restrict)
+  uploader     User         @relation("DocumentUploadedBy", fields: [uploaded_by], references: [id], onDelete: Restrict)
+
+  @@index([organization_id])
+  @@index([company_id, created_at(sort: Desc)])
+  @@index([contact_id, created_at(sort: Desc)])
+  @@index([deal_id, created_at(sort: Desc)])
+  @@index([project_id, created_at(sort: Desc)])
+  @@index([invoice_id, created_at(sort: Desc)])
+  @@index([uploaded_by])
+  @@index([deleted_at])
+  @@map("documents")
+}
+
+model Notification {
+  id              String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String              @db.Uuid
+  recipient_type  RecipientType
+  recipient_id    String              @db.Uuid
+  type            String
+  channel         NotificationChannel
+  payload         Json
+  read_at         DateTime?           @db.Timestamptz(6)
+  created_at      DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime            @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+
+  @@index([organization_id])
+  @@index([recipient_type, recipient_id, created_at(sort: Desc)])
+  @@map("notifications")
+}
+
+/// Immutable — no UPDATE/DELETE at DB role level (see prisma/sql/002_audit_log_revoke.sql).
+/// No updated_at by design.
+model AuditLog {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String    @db.Uuid
+  actor_type      ActorType
+  actor_id        String?   @db.Uuid
+  action          String
+  entity_type     String
+  entity_id       String    @db.Uuid
+  before          Json?
+  after           Json?
+  ip_address      String?
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+
+  @@index([organization_id])
+  @@index([entity_type, entity_id, created_at(sort: Desc)])
+  @@index([actor_type, actor_id])
+  @@map("audit_logs")
+}
+
+model WebhookEvent {
+  id                String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id   String        @db.Uuid
+  source            WebhookSource
+  external_event_id String
+  event_type        String
+  payload           Json
+  status            WebhookStatus @default(RECEIVED)
+  processed_at      DateTime?     @db.Timestamptz(6)
+  error             String?       @db.Text
+  created_at        DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime      @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+
+  @@unique([organization_id, source, external_event_id])
+  @@index([organization_id])
+  @@index([status, created_at])
+  @@map("webhook_events")
+}
+
+model DomainEvent {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String            @db.Uuid
+  type            String
+  aggregate_type  String
+  aggregate_id    String            @db.Uuid
+  payload         Json
+  status          DomainEventStatus @default(PENDING)
+  attempts        Int               @default(0)
+  last_error      String?           @db.Text
+  processed_at    DateTime?         @db.Timestamptz(6)
+  created_at      DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime          @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+
+  @@index([organization_id])
+  @@index([status, created_at])
+  @@map("domain_events")
+}
+
+// ─── CRM ─────────────────────────────────────────────────────────────────────
+
+model Company {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String    @db.Uuid
+  name            String
+  gstin           String?
+  billing_state   String?
+  billing_address String?
+  tags            String[]  @default([])
+  archived_at     DateTime? @db.Timestamptz(6)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+
+  contacts          Contact[]
+  client_users      ClientUser[]
+  invitation_tokens InvitationToken[]
+  leads             Lead[]
+  deals             Deal[]
+  projects          Project[]
+  invoices          Invoice[]
+  activities        Activity[]
+  notes             Note[]
+  documents         Document[]
+
+  @@index([organization_id])
+  @@index([archived_at])
+  @@map("companies")
+}
+
+model Contact {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String    @db.Uuid
+  company_id      String?   @db.Uuid
+  name            String
+  email           String?
+  phone           String?
+  archived_at     DateTime? @db.Timestamptz(6)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  company      Company?     @relation(fields: [company_id], references: [id], onDelete: Restrict)
+
+  client_users        ClientUser[]
+  leads               Lead[]
+  deals               Deal[]
+  milestones_approved Milestone[]  @relation("MilestoneApprovedByContact")
+  activities          Activity[]
+  notes               Note[]
+  documents           Document[]
+
+  @@index([organization_id])
+  @@index([company_id])
+  @@index([archived_at])
+  @@map("contacts")
+}
+
+model Lead {
+  id                   String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id      String     @db.Uuid
+  contact_id           String?    @db.Uuid
+  company_id           String?    @db.Uuid
+  status               LeadStatus @default(NEW)
+  source               LeadSource @default(OTHER)
+  notes                String?    @db.Text
+  converted_to_deal_id String?    @db.Uuid
+  archived_at          DateTime?  @db.Timestamptz(6)
+  created_at           DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime   @updatedAt @db.Timestamptz(6)
+
+  organization   Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  contact        Contact?     @relation(fields: [contact_id], references: [id], onDelete: Restrict)
+  company        Company?     @relation(fields: [company_id], references: [id], onDelete: Restrict)
+  converted_deal Deal?        @relation("LeadConvertedDeal", fields: [converted_to_deal_id], references: [id], onDelete: Restrict)
+
+  @@index([organization_id])
+  @@index([contact_id])
+  @@index([company_id])
+  @@index([converted_to_deal_id])
+  @@index([status])
+  @@index([archived_at])
+  @@map("leads")
+}
+
+model Deal {
+  id                    String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id       String          @db.Uuid
+  title                 String
+  company_id            String?         @db.Uuid
+  contact_id            String?         @db.Uuid
+  stage                 DealStage       @default(NEW)
+  estimated_value       Decimal         @db.Decimal(12, 2)
+  owner_id              String          @db.Uuid
+  lost_reason           DealLostReason?
+  next_follow_up_at     DateTime?       @db.Timestamptz(6)
+  reopened_from_deal_id String?         @db.Uuid
+  archived_at           DateTime?       @db.Timestamptz(6)
+  created_at            DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime        @updatedAt @db.Timestamptz(6)
+
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  company         Company?     @relation(fields: [company_id], references: [id], onDelete: Restrict)
+  contact         Contact?     @relation(fields: [contact_id], references: [id], onDelete: Restrict)
+  owner           User         @relation("DealOwner", fields: [owner_id], references: [id], onDelete: Restrict)
+  reopened_from   Deal?        @relation("DealReopenedFrom", fields: [reopened_from_deal_id], references: [id], onDelete: Restrict)
+  reopened_deals  Deal[]       @relation("DealReopenedFrom")
+  converted_leads Lead[]       @relation("LeadConvertedDeal")
+  proposals       Proposal[]
+  projects        Project[]
+  activities      Activity[]
+  notes           Note[]
+  documents       Document[]
+
+  @@index([organization_id])
+  @@index([company_id])
+  @@index([contact_id])
+  @@index([owner_id])
+  @@index([stage])
+  @@index([reopened_from_deal_id])
+  @@index([archived_at])
+  @@map("deals")
+}
+
+// ─── Sales ───────────────────────────────────────────────────────────────────
+
+model Proposal {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String         @db.Uuid
+  deal_id         String         @db.Uuid
+  version         Int
+  status          ProposalStatus @default(DRAFT)
+  terms           String?        @db.Text
+  sent_at         DateTime?      @db.Timestamptz(6)
+  viewed_at       DateTime?      @db.Timestamptz(6)
+  accepted_at     DateTime?      @db.Timestamptz(6)
+  rejected_at     DateTime?      @db.Timestamptz(6)
+  expires_at      DateTime?      @db.Timestamptz(6)
+  created_by      String         @db.Uuid
+  created_at      DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime       @updatedAt @db.Timestamptz(6)
+
+  organization         Organization       @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  deal                 Deal               @relation(fields: [deal_id], references: [id], onDelete: Restrict)
+  creator              User               @relation("ProposalCreatedBy", fields: [created_by], references: [id], onDelete: Restrict)
+  line_items           ProposalLineItem[]
+  accepted_by_projects Project[]          @relation("ProjectAcceptedProposal")
+
+  @@unique([organization_id, deal_id, version])
+  @@index([organization_id])
+  @@index([deal_id])
+  @@index([created_by])
+  @@index([status])
+  @@map("proposals")
+}
+
+model ProposalLineItem {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String   @db.Uuid
+  proposal_id     String   @db.Uuid
+  description     String
+  quantity        Decimal  @default(1) @db.Decimal(10, 2)
+  unit_price      Decimal  @db.Decimal(12, 2)
+  tax_rate_id     String?  @db.Uuid
+  sort_order      Int      @default(0)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  proposal     Proposal     @relation(fields: [proposal_id], references: [id], onDelete: Cascade)
+  tax_rate     TaxRate?     @relation(fields: [tax_rate_id], references: [id], onDelete: Restrict)
+
+  @@index([organization_id])
+  @@index([proposal_id])
+  @@index([tax_rate_id])
+  @@map("proposal_line_items")
+}
+
+// ─── Projects ────────────────────────────────────────────────────────────────
+
+/// No soft-delete column — preserve via ACTIVE/ON_HOLD/AT_RISK/COMPLETED/CANCELLED.
+model Project {
+  id                   String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id      String        @db.Uuid
+  name                 String
+  deal_id              String?       @db.Uuid
+  accepted_proposal_id String?       @db.Uuid
+  company_id           String        @db.Uuid
+  status               ProjectStatus @default(ACTIVE)
+  phase                ProjectPhase  @default(PLANNING)
+  owner_id             String        @db.Uuid
+  deadline             DateTime?     @db.Date
+  handover_checklist   Json          @default("[]")
+  completed_at         DateTime?     @db.Timestamptz(6)
+  created_at           DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime      @updatedAt @db.Timestamptz(6)
+
+  organization          Organization          @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  deal                  Deal?                 @relation(fields: [deal_id], references: [id], onDelete: Restrict)
+  accepted_proposal     Proposal?             @relation("ProjectAcceptedProposal", fields: [accepted_proposal_id], references: [id], onDelete: Restrict)
+  company               Company               @relation(fields: [company_id], references: [id], onDelete: Restrict)
+  owner                 User                  @relation("ProjectOwner", fields: [owner_id], references: [id], onDelete: Restrict)
+  milestones            Milestone[]
+  tasks                 Task[]
+  invoices              Invoice[]
+  expenses              Expense[]
+  maintenance_contracts MaintenanceContract[]
+  support_tickets       SupportTicket[]
+  activities            Activity[]
+  notes                 Note[]
+  documents             Document[]
+
+  @@index([organization_id])
+  @@index([deal_id])
+  @@index([accepted_proposal_id])
+  @@index([company_id])
+  @@index([owner_id])
+  @@index([status])
+  @@index([phase])
+  @@map("projects")
+}
+
+model Milestone {
+  id                       String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id          String          @db.Uuid
+  project_id               String          @db.Uuid
+  name                     String
+  status                   MilestoneStatus @default(PENDING)
+  requires_client_approval Boolean         @default(false)
+  approved_at              DateTime?       @db.Timestamptz(6)
+  approved_by_contact_id   String?         @db.Uuid
+  due_date                 DateTime?       @db.Date
+  sort_order               Int             @default(0)
+  created_at               DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime        @updatedAt @db.Timestamptz(6)
+
+  organization        Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  project             Project      @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  approved_by_contact Contact?     @relation("MilestoneApprovedByContact", fields: [approved_by_contact_id], references: [id], onDelete: Restrict)
+  tasks               Task[]
+
+  @@index([organization_id])
+  @@index([project_id])
+  @@index([approved_by_contact_id])
+  @@map("milestones")
+}
+
+model Task {
+  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id    String       @db.Uuid
+  project_id         String       @db.Uuid
+  milestone_id       String?      @db.Uuid
+  title              String
+  status             TaskStatus   @default(TODO)
+  priority           TaskPriority @default(MEDIUM)
+  assignee_id        String?      @db.Uuid
+  due_date           DateTime?    @db.Date
+  blocked_by_task_id String?      @db.Uuid
+  created_at         DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime     @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  project      Project      @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  milestone    Milestone?   @relation(fields: [milestone_id], references: [id], onDelete: SetNull)
+  assignee     User?        @relation("TaskAssignee", fields: [assignee_id], references: [id], onDelete: Restrict)
+  blocked_by   Task?        @relation("TaskBlockedBy", fields: [blocked_by_task_id], references: [id], onDelete: Restrict)
+  blockers     Task[]       @relation("TaskBlockedBy")
+  time_entries TimeEntry[]
+
+  @@index([organization_id])
+  @@index([project_id])
+  @@index([milestone_id])
+  @@index([assignee_id, status])
+  @@index([blocked_by_task_id])
+  @@map("tasks")
+}
+
+model TimeEntry {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String   @db.Uuid
+  task_id         String   @db.Uuid
+  user_id         String   @db.Uuid
+  minutes         Int
+  logged_at       DateTime @db.Date
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  task         Task         @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [user_id], references: [id], onDelete: Restrict)
+
+  @@index([organization_id])
+  @@index([task_id])
+  @@index([user_id])
+  @@map("time_entries")
+}
+
+// ─── Finance ─────────────────────────────────────────────────────────────────
+
+/// No soft-delete — use VOID / CANCELLED. paid_amount is a cached column.
+model Invoice {
+  id                      String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id         String        @db.Uuid
+  invoice_number          String
+  financial_year          String
+  project_id              String?       @db.Uuid
+  maintenance_contract_id String?       @db.Uuid
+  company_id              String        @db.Uuid
+  status                  InvoiceStatus @default(DRAFT)
+  tax_treatment           TaxTreatment
+  bill_to_snapshot        Json
+  amount                  Decimal       @db.Decimal(12, 2)
+  paid_amount             Decimal       @default(0) @db.Decimal(12, 2)
+  due_date                DateTime?     @db.Date
+  sent_at                 DateTime?     @db.Timestamptz(6)
+  cancelled_at            DateTime?     @db.Timestamptz(6)
+  cancellation_reason     String?       @db.Text
+  version                 Int           @default(1)
+  created_at              DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime      @updatedAt @db.Timestamptz(6)
+
+  organization         Organization         @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  project              Project?             @relation(fields: [project_id], references: [id], onDelete: Restrict)
+  maintenance_contract MaintenanceContract? @relation(fields: [maintenance_contract_id], references: [id], onDelete: Restrict)
+  company              Company              @relation(fields: [company_id], references: [id], onDelete: Restrict)
+  line_items           InvoiceLineItem[]
+  payments             Payment[]
+  credit_notes         CreditNote[]
+  documents            Document[]
+
+  @@unique([organization_id, financial_year, invoice_number])
+  @@index([organization_id])
+  @@index([project_id])
+  @@index([maintenance_contract_id])
+  @@index([company_id])
+  @@index([status])
+  @@map("invoices")
+}
+
+/// Immutable snapshot values — no FK to ProposalLineItem or TaxRate by design.
+model InvoiceLineItem {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String   @db.Uuid
+  invoice_id      String   @db.Uuid
+  description     String
+  hsn_sac_code    String
+  quantity        Decimal  @db.Decimal(10, 2)
+  unit_price      Decimal  @db.Decimal(12, 2)
+  cgst_rate       Decimal  @default(0) @db.Decimal(5, 2)
+  sgst_rate       Decimal  @default(0) @db.Decimal(5, 2)
+  igst_rate       Decimal  @default(0) @db.Decimal(5, 2)
+  line_total      Decimal  @db.Decimal(12, 2)
+  sort_order      Int      @default(0)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @updatedAt @db.Timestamptz(6)
+
+  organization           Organization         @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  invoice                Invoice              @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+  credit_note_line_items CreditNoteLineItem[]
+
+  @@index([organization_id])
+  @@index([invoice_id])
+  @@map("invoice_line_items")
+}
+
+/// No soft-delete — reverse via Refund (REVERSED). Optimistic lock via version.
+model Payment {
+  id                  String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id     String        @db.Uuid
+  invoice_id          String        @db.Uuid
+  amount              Decimal       @db.Decimal(12, 2)
+  method              PaymentMethod
+  status              PaymentStatus @default(PENDING)
+  razorpay_payment_id String?
+  razorpay_order_id   String?
+  reference_note      String?
+  recorded_by         String?       @db.Uuid
+  paid_at             DateTime?     @db.Timestamptz(6)
+  version             Int           @default(1)
+  created_at          DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime      @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  invoice      Invoice      @relation(fields: [invoice_id], references: [id], onDelete: Restrict)
+  recorder     User?        @relation("PaymentRecordedBy", fields: [recorded_by], references: [id], onDelete: Restrict)
+  refunds      Refund[]
+
+  @@unique([organization_id, razorpay_payment_id])
+  @@index([organization_id])
+  @@index([invoice_id])
+  @@index([recorded_by])
+  @@index([status])
+  @@map("payments")
+}
+
+model Refund {
+  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id    String       @db.Uuid
+  payment_id         String       @db.Uuid
+  amount             Decimal      @db.Decimal(12, 2)
+  reason             String       @db.Text
+  status             RefundStatus @default(PENDING)
+  razorpay_refund_id String?
+  approved_by        String       @db.Uuid
+  created_at         DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime     @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  payment      Payment      @relation(fields: [payment_id], references: [id], onDelete: Restrict)
+  approver     User         @relation("RefundApprovedBy", fields: [approved_by], references: [id], onDelete: Restrict)
+
+  @@unique([organization_id, razorpay_refund_id])
+  @@index([organization_id])
+  @@index([payment_id])
+  @@index([approved_by])
+  @@map("refunds")
+}
+
+model CreditNote {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id    String           @db.Uuid
+  credit_note_number String
+  financial_year     String
+  invoice_id         String           @db.Uuid
+  reason             CreditNoteReason
+  amount             Decimal          @db.Decimal(12, 2)
+  issued_at          DateTime         @default(now()) @db.Timestamptz(6)
+  approved_by        String           @db.Uuid
+  created_at         DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime         @updatedAt @db.Timestamptz(6)
+
+  organization Organization         @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  invoice      Invoice              @relation(fields: [invoice_id], references: [id], onDelete: Restrict)
+  approver     User                 @relation("CreditNoteApprovedBy", fields: [approved_by], references: [id], onDelete: Restrict)
+  line_items   CreditNoteLineItem[]
+
+  @@unique([organization_id, financial_year, credit_note_number])
+  @@index([organization_id])
+  @@index([invoice_id])
+  @@index([approved_by])
+  @@map("credit_notes")
+}
+
+model CreditNoteLineItem {
+  id                            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id               String   @db.Uuid
+  credit_note_id                String   @db.Uuid
+  original_invoice_line_item_id String?  @db.Uuid
+  description                   String
+  amount                        Decimal  @db.Decimal(12, 2)
+  created_at                    DateTime @default(now()) @db.Timestamptz(6)
+  updated_at                    DateTime @updatedAt @db.Timestamptz(6)
+
+  organization               Organization     @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  credit_note                CreditNote       @relation(fields: [credit_note_id], references: [id], onDelete: Cascade)
+  original_invoice_line_item InvoiceLineItem? @relation(fields: [original_invoice_line_item_id], references: [id], onDelete: Restrict)
+
+  @@index([organization_id])
+  @@index([credit_note_id])
+  @@index([original_invoice_line_item_id])
+  @@map("credit_note_line_items")
+}
+
+model Expense {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String   @db.Uuid
+  project_id      String?  @db.Uuid
+  description     String
+  amount          Decimal  @db.Decimal(12, 2)
+  category        String
+  incurred_at     DateTime @db.Date
+  recorded_by     String   @db.Uuid
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  project      Project?     @relation(fields: [project_id], references: [id], onDelete: Restrict)
+  recorder     User         @relation("ExpenseRecordedBy", fields: [recorded_by], references: [id], onDelete: Restrict)
+
+  @@index([organization_id])
+  @@index([project_id])
+  @@index([recorded_by])
+  @@map("expenses")
+}
+
+/// Append-only ledger. Partial unique for automatic entries: see prisma/sql/003_partial_uniques.sql
+model ForgeFundEntry {
+  id              String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String             @db.Uuid
+  type            ForgeFundEntryType
+  amount          Decimal            @db.Decimal(12, 2)
+  source_type     String?
+  source_id       String?            @db.Uuid
+  reason          String             @db.Text
+  approved_by     String             @db.Uuid
+  created_at      DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime           @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  approver     User         @relation("ForgeFundApprovedBy", fields: [approved_by], references: [id], onDelete: Restrict)
+
+  @@index([organization_id])
+  @@index([approved_by])
+  @@index([source_type, source_id])
+  @@map("forge_fund_entries")
+}
+
+model MaintenanceContract {
+  id                       String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id          String            @db.Uuid
+  project_id               String            @db.Uuid
+  status                   MaintenanceStatus @default(ACTIVE)
+  monthly_fee              Decimal           @db.Decimal(12, 2)
+  starts_at                DateTime          @db.Date
+  ends_at                  DateTime          @db.Date
+  renewed_from_contract_id String?           @db.Uuid
+  cancelled_at             DateTime?         @db.Timestamptz(6)
+  cancellation_reason      String?           @db.Text
+  created_at               DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime          @updatedAt @db.Timestamptz(6)
+
+  organization    Organization          @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  project         Project               @relation(fields: [project_id], references: [id], onDelete: Restrict)
+  renewed_from    MaintenanceContract?  @relation("MaintenanceRenewedFrom", fields: [renewed_from_contract_id], references: [id], onDelete: Restrict)
+  renewals        MaintenanceContract[] @relation("MaintenanceRenewedFrom")
+  invoices        Invoice[]
+  support_tickets SupportTicket[]
+
+  @@index([organization_id])
+  @@index([project_id])
+  @@index([renewed_from_contract_id])
+  @@index([status])
+  @@map("maintenance_contracts")
+}
+
+model SupportTicket {
+  id                       String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id          String       @db.Uuid
+  maintenance_contract_id  String?      @db.Uuid
+  project_id               String       @db.Uuid
+  raised_by_client_user_id String       @db.Uuid
+  subject                  String
+  status                   TicketStatus @default(OPEN)
+  resolved_at              DateTime?    @db.Timestamptz(6)
+  reopen_deadline          DateTime?    @db.Timestamptz(6)
+  created_at               DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime     @updatedAt @db.Timestamptz(6)
+
+  organization         Organization         @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  maintenance_contract MaintenanceContract? @relation(fields: [maintenance_contract_id], references: [id], onDelete: Restrict)
+  project              Project              @relation(fields: [project_id], references: [id], onDelete: Restrict)
+  raised_by            ClientUser           @relation(fields: [raised_by_client_user_id], references: [id], onDelete: Restrict)
+
+  @@index([organization_id])
+  @@index([maintenance_contract_id])
+  @@index([project_id])
+  @@index([raised_by_client_user_id])
+  @@index([status])
+  @@map("support_tickets")
+}
