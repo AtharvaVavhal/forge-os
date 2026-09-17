@@ -83,6 +83,20 @@ export async function cleanupTestFixtures(app: INestApplication): Promise<void> 
     where: { email: { startsWith: TEST_EMAIL_PREFIX } },
   });
   await prisma.clientUser.deleteMany({ where: { email: { startsWith: TEST_EMAIL_PREFIX } } });
+
+  // Clear Restrict FKs that may reference test users (notes/documents from
+  // parallel shared-module work, or any other RESTRICT actor columns).
+  const testUsers = await prisma.user.findMany({
+    where: { email: { startsWith: TEST_EMAIL_PREFIX } },
+    select: { id: true },
+  });
+  const testUserIds = testUsers.map((u) => u.id);
+  if (testUserIds.length > 0) {
+    await prisma.note.deleteMany({ where: { created_by: { in: testUserIds } } });
+    await prisma.document.deleteMany({ where: { uploaded_by: { in: testUserIds } } });
+    await prisma.activity.deleteMany({ where: { created_by: { in: testUserIds } } });
+  }
+
   await prisma.user.deleteMany({ where: { email: { startsWith: TEST_EMAIL_PREFIX } } });
   await prisma.organization.deleteMany({
     where: { name: { startsWith: "Phase 1 E2E Second Org" } },

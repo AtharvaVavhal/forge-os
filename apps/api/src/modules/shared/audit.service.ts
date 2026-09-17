@@ -106,6 +106,18 @@ export const AUDIT_ACTIONS = {
   MILESTONE_REVERTED: "milestone.reverted",
   TASK_ASSIGNED: "task.assigned",
   TASK_REOPENED: "task.reopened",
+  // B5 Finance (Document 5 §19's per-route Audit column; Document 6 §16/§17
+  // Tier A: invoice state changes, payment creation/completion, refund,
+  // credit notes, Forge Fund changes).
+  INVOICE_SENT: "invoice.sent",
+  INVOICE_VOIDED: "invoice.voided",
+  INVOICE_CANCELLED: "invoice.cancelled",
+  PAYMENT_RECORDED: "payment.recorded",
+  PAYMENT_COMPLETED_WEBHOOK: "payment.completed_webhook",
+  REFUND_CREATED: "refund.created",
+  CREDIT_NOTE_ISSUED: "credit_note.issued",
+  FORGE_FUND_ENTRY_CREATED: "forge_fund_entry.created",
+  FORGE_FUND_CONTRIBUTION_WEBHOOK: "forge_fund_entry.contribution_webhook",
 } as const;
 
 /**

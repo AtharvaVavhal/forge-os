@@ -31,3 +31,18 @@ export function IsQuantityString(): PropertyDecorator {
     })
   );
 }
+
+/**
+ * `TaxRate.cgst_rate`/`sgst_rate`/`igst_rate` and `InvoiceLineItem`'s copies
+ * of them are `Decimal(5, 2)` — a percentage, up to 3 integer digits (0-999,
+ * comfortably covers real GST slabs which top out at 28) plus 2 decimals.
+ */
+export const TAX_RATE_REGEX = /^\d{1,3}\.\d{2}$/;
+
+export function IsTaxRateString(): PropertyDecorator {
+  return applyDecorators(
+    Matches(TAX_RATE_REGEX, {
+      message: "must be a decimal string with exactly two decimal places, e.g. \"9.00\"",
+    })
+  );
+}

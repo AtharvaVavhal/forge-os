@@ -3,8 +3,10 @@ import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import cookieParser from "cookie-parser";
+import { json, urlencoded } from "express";
 import helmet from "helmet";
 import { AppModule } from "./app.module";
+import { rawBodySaver } from "./common/http/raw-body";
 import type { AppConfig } from "./config/configuration";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 import { CamelCaseResponseInterceptor } from "./common/interceptors/camel-case-response.interceptor";
@@ -12,7 +14,16 @@ import { LoggingInterceptor } from "./common/interceptors/logging.interceptor";
 import { RequestIdInterceptor } from "./common/interceptors/request-id.interceptor";
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // `bodyParser: false` — Nest's automatic body parser would otherwise
+  // register its own `express.json()` with no `verify` hook, consuming
+  // the request stream before the raw-body-capturing one below ever ran.
+  // Replaced immediately with the same two parsers Nest would have
+  // registered (json + urlencoded), just with `verify` added (Document 5
+  // §9.2 / Document 6 §12 — the Razorpay webhook needs the exact raw
+  // bytes Razorpay signed, not the parsed-then-reserialized body).
+  const app = await NestFactory.create(AppModule, { bufferLogs: true, bodyParser: false });
+  app.use(json({ verify: rawBodySaver }));
+  app.use(urlencoded({ extended: true, verify: rawBodySaver }));
   const configService = app.get(ConfigService<AppConfig, true>);
 
   // --- Security headers foundation (Step 12) -------------------------------

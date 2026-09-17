@@ -147,6 +147,24 @@ class EnvironmentVariables {
   @IsInt()
   @Min(1)
   RATE_LIMIT_PASSWORD_RESET_WINDOW_SECONDS: number = 300;
+
+  // --- Razorpay (Document 6 §12, §20) ---------------------------------------
+  // All optional, same pattern as Google SSO above: Razorpay is not required
+  // to boot the app locally. `/payments/razorpay/orders` returns a clear
+  // "not configured" error and the webhook route rejects every signature if
+  // these are unset, rather than the app failing to start.
+
+  @IsOptional()
+  @IsString()
+  RAZORPAY_KEY_ID?: string;
+
+  @IsOptional()
+  @IsString()
+  RAZORPAY_KEY_SECRET?: string;
+
+  @IsOptional()
+  @IsString()
+  RAZORPAY_WEBHOOK_SECRET?: string;
 }
 
 export function validate(config: Record<string, unknown>): EnvironmentVariables {

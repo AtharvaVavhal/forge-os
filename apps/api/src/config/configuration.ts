@@ -34,6 +34,16 @@ export interface AppConfig {
     invitationAccept: { limit: number; ttlSeconds: number };
     passwordReset: { limit: number; ttlSeconds: number };
   };
+  razorpay: {
+    keyId: string | undefined;
+    keySecret: string | undefined;
+    webhookSecret: string | undefined;
+    /** True only when all three of the above are actually set. */
+    configured: boolean;
+    /** True when just the webhook secret is set — the webhook route can
+     * verify signatures independently of order-creation being configured. */
+    webhookConfigured: boolean;
+  };
 }
 
 /**
@@ -104,6 +114,13 @@ export default (): AppConfig => {
           10
         ),
       },
+    },
+    razorpay: {
+      keyId: process.env.RAZORPAY_KEY_ID,
+      keySecret: process.env.RAZORPAY_KEY_SECRET,
+      webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
+      configured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
+      webhookConfigured: Boolean(process.env.RAZORPAY_WEBHOOK_SECRET),
     },
   };
 };

@@ -1,10 +1,11 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
-import { APP_GUARD } from "@nestjs/core";
+import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import configuration from "./config/configuration";
 import type { AppConfig } from "./config/configuration";
 import { validate } from "./config/env.validation";
+import { IdempotencyInterceptor } from "./common/idempotency/idempotency.interceptor";
 import { PrismaModule } from "./database/prisma.module";
 import { HealthModule } from "./health/health.module";
 import { AuthModule } from "./modules/auth/auth.module";
@@ -15,6 +16,7 @@ import { SharedModule } from "./modules/shared/shared.module";
 import { CrmModule } from "./modules/crm/crm.module";
 import { SalesModule } from "./modules/sales/sales.module";
 import { ProjectsModule } from "./modules/projects/projects.module";
+import { FinanceModule } from "./modules/finance/finance.module";
 
 @Module({
   imports: [
@@ -49,8 +51,9 @@ import { ProjectsModule } from "./modules/projects/projects.module";
     CrmModule,
     SalesModule,
     ProjectsModule,
-    // Remaining domain modules (finance, team, portal) are added here
-    // starting in a later phase — see src/modules/README.md.
+    FinanceModule,
+    // Remaining domain modules (team, portal) are added here starting in
+    // a later phase — see src/modules/README.md.
   ],
   providers: [
     // Global guard chain, explicit order (Step 8/9/12):
@@ -68,6 +71,12 @@ import { ProjectsModule } from "./modules/projects/projects.module";
     { provide: APP_GUARD, useExisting: JwtAuthGuard },
     { provide: APP_GUARD, useExisting: PermissionsGuard },
     { provide: APP_GUARD, useExisting: CsrfGuard },
+    // B5 Finance (Document 5 §2.7) — a global interceptor, but a no-op for
+    // every route not explicitly marked `@Idempotent()`; all guards above
+    // (including JwtAuthGuard, which populates `request.user`) have
+    // already run by the time any interceptor executes, so the cache key
+    // this depends on is always available.
+    { provide: APP_INTERCEPTOR, useClass: IdempotencyInterceptor },
   ],
 })
 export class AppModule {}
