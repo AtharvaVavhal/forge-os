@@ -10,9 +10,13 @@ import { DealWonConsumer } from "./consumers/deal-won.consumer";
 import { ProposalAcceptedConsumer } from "./consumers/proposal-accepted.consumer";
 import { ProposalSentConsumer } from "./consumers/proposal-sent.consumer";
 
+/** In-flight claim marker stored in last_error while a worker processes (B9 M6). */
+const CLAIM_PREFIX = "__PROCESSING__:";
+const CLAIM_TTL_MS = 5 * 60 * 1000;
+
 /**
  * Transactional outbox processor (Document 5 §14).
- * Claim via conditional updateMany on PENDING; process; mark PROCESSED/FAILED.
+ * Claim via FOR UPDATE SKIP LOCKED + processing lease; process; mark PROCESSED/FAILED.
  * Exported for E2E to invoke deterministically without waiting on the interval worker.
  */
 @Injectable()
@@ -42,6 +46,7 @@ export class DomainEventOutboxService {
     for (const event of candidates) {
       if (attempted >= limit) break;
       if (!this.isDue(event, now)) continue;
+      if (this.hasActiveClaim(event, now)) continue;
 
       attempted += 1;
       const result = await this.processOne(event.id);
@@ -53,19 +58,43 @@ export class DomainEventOutboxService {
   }
 
   async processOne(eventId: string): Promise<"processed" | "failed" | "skipped"> {
-    // Claim: only one worker succeeds when status is still PENDING.
-    const claimed = await this.prisma.domainEvent.updateMany({
-      where: { id: eventId, status: DomainEventStatus.PENDING },
-      data: { attempts: { increment: 1 } },
+    // B9 M6: exclusive claim — skip locked rows; set processing lease so concurrent
+    // workers do not dispatch the same PENDING event without a PROCESSING enum.
+    const claimed = await this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ id: string; last_error: string | null }>>`
+        SELECT id, last_error
+        FROM domain_events
+        WHERE id = ${eventId}::uuid
+          AND status = 'PENDING'::"DomainEventStatus"
+        FOR UPDATE SKIP LOCKED
+      `;
+      if (rows.length !== 1) {
+        return null;
+      }
+      const now = Date.now();
+      const lease = rows[0]!.last_error;
+      if (lease?.startsWith(CLAIM_PREFIX)) {
+        const claimedAt = Number(lease.slice(CLAIM_PREFIX.length));
+        if (Number.isFinite(claimedAt) && now - claimedAt < CLAIM_TTL_MS) {
+          return null;
+        }
+      }
+
+      return tx.domainEvent.update({
+        where: { id: eventId },
+        data: {
+          attempts: { increment: 1 },
+          last_error: `${CLAIM_PREFIX}${now}`,
+        },
+      });
     });
-    if (claimed.count !== 1) {
+
+    if (!claimed) {
       return "skipped";
     }
 
-    const event = await this.prisma.domainEvent.findUniqueOrThrow({ where: { id: eventId } });
-
     try {
-      await this.dispatch(event);
+      await this.dispatch(claimed);
       await this.prisma.domainEvent.update({
         where: { id: eventId },
         data: {
@@ -77,9 +106,9 @@ export class DomainEventOutboxService {
       return "processed";
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.error(`DomainEvent ${eventId} (${event.type}) failed: ${message}`);
+      this.logger.error(`DomainEvent ${eventId} (${claimed.type}) failed: ${message}`);
 
-      const terminal = event.attempts >= DOMAIN_EVENT_MAX_ATTEMPTS;
+      const terminal = claimed.attempts >= DOMAIN_EVENT_MAX_ATTEMPTS;
       await this.prisma.domainEvent.update({
         where: { id: eventId },
         data: {
@@ -103,6 +132,12 @@ export class DomainEventOutboxService {
         last_error: errorMessage,
       },
     });
+  }
+
+  private hasActiveClaim(event: DomainEvent, nowMs: number): boolean {
+    if (!event.last_error?.startsWith(CLAIM_PREFIX)) return false;
+    const claimedAt = Number(event.last_error.slice(CLAIM_PREFIX.length));
+    return Number.isFinite(claimedAt) && nowMs - claimedAt < CLAIM_TTL_MS;
   }
 
   private isDue(event: DomainEvent, nowMs: number): boolean {

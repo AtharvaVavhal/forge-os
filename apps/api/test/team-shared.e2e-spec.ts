@@ -267,7 +267,7 @@ describe("Phase B6: Team + Shared Systems (e2e)", () => {
           organization_id: founderSession.organizationId,
           company_id: company.id,
           name: `${TEAM_SHARED_TEST_PREFIX}Project-Notes`,
-          owner_id: founderSession.userId,
+          owner_id: teamMemberSession.userId,
         },
       });
     });
@@ -302,6 +302,24 @@ describe("Phase B6: Team + Shared Systems (e2e)", () => {
         .expect(201);
 
       expect(res.body.projectId).toBe(project.id);
+    });
+
+    it("B9: TEAM_MEMBER cannot create or list company/deal notes (CRM fail-closed)", async () => {
+      const deniedCreate = await request(app.getHttpServer())
+        .post("/api/v1/notes")
+        .set(authHeaders(teamMemberSession))
+        .send({
+          body: "Should not leak CRM notes.",
+          companyId: company.id,
+        })
+        .expect(403);
+      expect(deniedCreate.body.error.code).toBe("FORBIDDEN_PERMISSION");
+
+      const deniedList = await request(app.getHttpServer())
+        .get(`/api/v1/notes?companyId=${company.id}`)
+        .set(authHeaders(teamMemberSession))
+        .expect(403);
+      expect(deniedList.body.error.code).toBe("FORBIDDEN_PERMISSION");
     });
 
     it("rejects note creation with zero parents (400)", async () => {
@@ -492,13 +510,44 @@ describe("Phase B6: Team + Shared Systems (e2e)", () => {
       createdDocumentId = res.body.id;
     });
 
+    it("B9 C2: rejects foreign storageKey prefix and storageKey reuse / visibility rebinding", async () => {
+      const foreign = await request(app.getHttpServer())
+        .post("/api/v1/documents")
+        .set(authHeaders(founderSession))
+        .send({
+          filename: "foreign.pdf",
+          storageKey: "00000000-0000-4000-8000-000000000099/not-ours.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 1024,
+          category: DocumentCategory.INTERNAL,
+          projectId: project.id,
+        })
+        .expect(400);
+      expect(foreign.body.error.code).toBe("INVALID_STORAGE_KEY");
+
+      const reuse = await request(app.getHttpServer())
+        .post("/api/v1/documents")
+        .set(authHeaders(founderSession))
+        .send({
+          filename: "rebinding.pdf",
+          storageKey: validStorageKey,
+          mimeType: "application/pdf",
+          sizeBytes: 1024,
+          category: DocumentCategory.INTERNAL,
+          projectId: project.id,
+          visibility: Visibility.CLIENT_VISIBLE,
+        })
+        .expect(409);
+      expect(reuse.body.error.code).toBe("STORAGE_KEY_ALREADY_REGISTERED");
+    });
+
     it("rejects document registration with zero parents (400)", async () => {
       const res = await request(app.getHttpServer())
         .post("/api/v1/documents")
         .set(authHeaders(founderSession))
         .send({
           filename: "orphan.pdf",
-          storageKey: validStorageKey,
+          storageKey: `${founderSession.organizationId}/orphan-unused.pdf`,
           mimeType: "application/pdf",
           sizeBytes: 1024,
           category: DocumentCategory.INTERNAL,

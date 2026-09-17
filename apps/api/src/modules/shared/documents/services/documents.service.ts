@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -18,6 +19,7 @@ import {
   paginateCursorResult,
 } from "../../../../common/pagination/cursor-pagination";
 import type { ListEnvelope } from "../../../../common/pagination/offset-pagination";
+import { roleHasPermission } from "../../../auth/policies/permissions";
 import type { AuthenticatedUser } from "../../../auth/types/authenticated-request.interface";
 import {
   assertCrmRoleMayAccessLeadsOrDeals,
@@ -82,6 +84,18 @@ export class DocumentsService {
     await this.assertParentInOrgAndAuthorized(actor, dto);
 
     this.storage.assertValidFile(dto.mimeType, dto.sizeBytes);
+    // B9 C2: bind key to caller org and reject reuse (visibility rebinding / exfil).
+    this.storage.assertValidStorageKeyForOrg(dto.storageKey, actor.organizationId);
+    const existingKey = await this.prisma.document.findFirst({
+      where: { storage_key: dto.storageKey },
+      select: { id: true },
+    });
+    if (existingKey) {
+      throw new ConflictException({
+        code: "STORAGE_KEY_ALREADY_REGISTERED",
+        message: "This storageKey is already registered to a document.",
+      });
+    }
 
     return this.prisma.document.create({
       data: {
@@ -107,6 +121,14 @@ export class DocumentsService {
     query: ListDocumentsQueryDto
   ): Promise<ListEnvelope<Document>> {
     const limit = query.limit ?? 25;
+
+    // B9 H4: listing invoice-parented documents requires finance.read.
+    if (query.invoiceId && !roleHasPermission(actor.role, "finance.read")) {
+      throw new ForbiddenException({
+        code: "FORBIDDEN_PERMISSION",
+        message: "You don't have permission to attach or access invoice documents.",
+      });
+    }
 
     const where: Prisma.DocumentWhereInput = {
       organization_id: actor.organizationId,
@@ -271,11 +293,11 @@ export class DocumentsService {
           message: "Invoice not found in organization.",
         });
       }
-      // TEAM_MEMBER has no finance.* — invoices are not an assigned parent.
-      if (actor.role === UserRole.TEAM_MEMBER) {
+      // B9 H4: invoice-parented documents require finance.read (closes SALES/OPS adjacency).
+      if (!roleHasPermission(actor.role, "finance.read")) {
         throw new ForbiddenException({
           code: "FORBIDDEN_PERMISSION",
-          message: "You don't have permission to attach documents to invoices.",
+          message: "You don't have permission to attach or access invoice documents.",
         });
       }
     }

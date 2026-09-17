@@ -147,4 +147,37 @@ describe("Invitations (e2e)", () => {
     expect(row.token_hash).not.toBe(token);
     expect(row.token_hash).toHaveLength(64); // SHA-256 hex digest
   });
+
+  it("B9 H5: CLIENT invitation rejects companyId outside the caller's organization", async () => {
+    const prisma = app.get(PrismaService);
+    const otherOrg = await prisma.organization.create({
+      data: {
+        name: "phase1-e2e-invite-other-org",
+        billing_state: "Karnataka",
+        billing_address: "Bangalore",
+      },
+    });
+    const foreignCompany = await prisma.company.create({
+      data: {
+        organization_id: otherOrg.id,
+        name: "phase1-e2e-invite-foreign-co",
+      },
+    });
+
+    const response = await request(app.getHttpServer())
+      .post("/api/v1/invitations")
+      .set("Cookie", `forge_session=${founderCookie}; forge_csrf=${founderCsrf}`)
+      .set("X-CSRF-Token", founderCsrf)
+      .send({
+        scope: "CLIENT",
+        email: "phase1-e2e-invite-client-cross-org@forge.local",
+        companyId: foreignCompany.id,
+      });
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe("NOT_FOUND");
+
+    await prisma.company.delete({ where: { id: foreignCompany.id } }).catch(() => undefined);
+    await prisma.organization.delete({ where: { id: otherOrg.id } }).catch(() => undefined);
+  });
 });

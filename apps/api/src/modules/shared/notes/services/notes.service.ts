@@ -19,12 +19,27 @@ import {
 } from "../../../../common/pagination/cursor-pagination";
 import type { ListEnvelope } from "../../../../common/pagination/offset-pagination";
 import type { AuthenticatedUser } from "../../../auth/types/authenticated-request.interface";
+import {
+  assertCrmRoleMayAccessLeadsOrDeals,
+  assertTeamMemberMayViewCompanyOrContact,
+} from "../../../crm/policies/resource-authorization";
+import {
+  assertTeamMemberMayAccessProject,
+  teamMemberProjectWhere,
+} from "../../../projects/policies/resource-authorization";
 import { AuditService, AUDIT_ACTIONS } from "../../audit.service";
 import type {
   CreateNoteDto,
   ListNotesQueryDto,
   UpdateNoteDto,
 } from "../dto/note.dto";
+
+type NoteParentIds = {
+  companyId?: string;
+  contactId?: string;
+  dealId?: string;
+  projectId?: string;
+};
 
 @Injectable()
 export class NotesService {
@@ -49,51 +64,7 @@ export class NotesService {
       });
     }
 
-    if (dto.companyId) {
-      const company = await this.prisma.company.findFirst({
-        where: { id: dto.companyId, organization_id: actor.organizationId },
-        select: { id: true },
-      });
-      if (!company) {
-        throw new NotFoundException({
-          code: "PARENT_NOT_FOUND",
-          message: "Company not found in organization.",
-        });
-      }
-    } else if (dto.contactId) {
-      const contact = await this.prisma.contact.findFirst({
-        where: { id: dto.contactId, organization_id: actor.organizationId },
-        select: { id: true },
-      });
-      if (!contact) {
-        throw new NotFoundException({
-          code: "PARENT_NOT_FOUND",
-          message: "Contact not found in organization.",
-        });
-      }
-    } else if (dto.dealId) {
-      const deal = await this.prisma.deal.findFirst({
-        where: { id: dto.dealId, organization_id: actor.organizationId },
-        select: { id: true },
-      });
-      if (!deal) {
-        throw new NotFoundException({
-          code: "PARENT_NOT_FOUND",
-          message: "Deal not found in organization.",
-        });
-      }
-    } else if (dto.projectId) {
-      const project = await this.prisma.project.findFirst({
-        where: { id: dto.projectId, organization_id: actor.organizationId },
-        select: { id: true },
-      });
-      if (!project) {
-        throw new NotFoundException({
-          code: "PARENT_NOT_FOUND",
-          message: "Project not found in organization.",
-        });
-      }
-    }
+    await this.assertParentInOrgAndAuthorized(actor, dto);
 
     return this.prisma.note.create({
       data: {
@@ -115,6 +86,25 @@ export class NotesService {
   ): Promise<ListEnvelope<Note>> {
     const limit = query.limit ?? 25;
 
+    // When a specific parent is requested, enforce the same authz as create
+    // so TEAM_MEMBER cannot probe CRM parents via list filters.
+    if (query.companyId || query.contactId || query.dealId || query.projectId) {
+      const parentCount = [
+        query.companyId,
+        query.contactId,
+        query.dealId,
+        query.projectId,
+      ].filter((v) => v !== undefined).length;
+      if (parentCount === 1) {
+        await this.assertParentInOrgAndAuthorized(actor, {
+          companyId: query.companyId,
+          contactId: query.contactId,
+          dealId: query.dealId,
+          projectId: query.projectId,
+        });
+      }
+    }
+
     const where: Prisma.NoteWhereInput = {
       organization_id: actor.organizationId,
       ...(query.companyId ? { company_id: query.companyId } : {}),
@@ -122,6 +112,7 @@ export class NotesService {
       ...(query.dealId ? { deal_id: query.dealId } : {}),
       ...(query.projectId ? { project_id: query.projectId } : {}),
       ...(query.visibility ? { visibility: query.visibility } : {}),
+      ...this.teamMemberNoteListScope(actor),
       ...cursorWhere(query.cursor),
     };
 
@@ -149,6 +140,13 @@ export class NotesService {
         message: "Note not found.",
       });
     }
+
+    await this.assertParentInOrgAndAuthorized(actor, {
+      companyId: note.company_id ?? undefined,
+      contactId: note.contact_id ?? undefined,
+      dealId: note.deal_id ?? undefined,
+      projectId: note.project_id ?? undefined,
+    });
 
     if (actor.role === UserRole.TEAM_MEMBER && note.created_by !== actor.id) {
       throw new ForbiddenException({
@@ -182,5 +180,92 @@ export class NotesService {
     }
 
     return updated;
+  }
+
+  /**
+   * B9 H3: mirror DocumentsService parent auth — TEAM_MEMBER CRM fail-closed,
+   * deal notes denied, project notes require assignment.
+   */
+  private async assertParentInOrgAndAuthorized(
+    actor: AuthenticatedUser,
+    parent: NoteParentIds
+  ): Promise<void> {
+    if (parent.companyId) {
+      const company = await this.prisma.company.findFirst({
+        where: { id: parent.companyId, organization_id: actor.organizationId },
+        select: { id: true },
+      });
+      if (!company) {
+        throw new NotFoundException({
+          code: "PARENT_NOT_FOUND",
+          message: "Company not found in organization.",
+        });
+      }
+      assertTeamMemberMayViewCompanyOrContact(actor);
+      return;
+    }
+
+    if (parent.contactId) {
+      const contact = await this.prisma.contact.findFirst({
+        where: { id: parent.contactId, organization_id: actor.organizationId },
+        select: { id: true },
+      });
+      if (!contact) {
+        throw new NotFoundException({
+          code: "PARENT_NOT_FOUND",
+          message: "Contact not found in organization.",
+        });
+      }
+      assertTeamMemberMayViewCompanyOrContact(actor);
+      return;
+    }
+
+    if (parent.dealId) {
+      const deal = await this.prisma.deal.findFirst({
+        where: { id: parent.dealId, organization_id: actor.organizationId },
+        select: { id: true },
+      });
+      if (!deal) {
+        throw new NotFoundException({
+          code: "PARENT_NOT_FOUND",
+          message: "Deal not found in organization.",
+        });
+      }
+      assertCrmRoleMayAccessLeadsOrDeals(actor);
+      return;
+    }
+
+    if (parent.projectId) {
+      const project = await this.prisma.project.findFirst({
+        where: {
+          id: parent.projectId,
+          organization_id: actor.organizationId,
+        },
+        include: { tasks: { select: { assignee_id: true } } },
+      });
+      if (!project) {
+        throw new NotFoundException({
+          code: "PARENT_NOT_FOUND",
+          message: "Project not found in organization.",
+        });
+      }
+      assertTeamMemberMayAccessProject(actor, project);
+    }
+  }
+
+  private teamMemberNoteListScope(actor: AuthenticatedUser): Prisma.NoteWhereInput {
+    if (actor.role !== UserRole.TEAM_MEMBER) {
+      return {};
+    }
+    return {
+      project_id: { not: null },
+      company_id: null,
+      contact_id: null,
+      deal_id: null,
+      project: {
+        organization_id: actor.organizationId,
+        ...teamMemberProjectWhere(actor),
+      },
+    };
   }
 }

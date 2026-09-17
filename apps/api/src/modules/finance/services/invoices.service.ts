@@ -389,10 +389,18 @@ export class InvoicesService {
           },
           orderBy: { effective_from: "desc" },
         });
+        // B9 M5: unknown HSN/SAC must not silently zero tax.
+        if (!taxRate) {
+          throw new UnprocessableEntityException({
+            code: "TAX_RATE_NOT_FOUND",
+            message: `No active tax rate found for HSN/SAC code "${line.hsnSacCode}".`,
+            details: { hsnSacCode: line.hsnSacCode },
+          });
+        }
         const snapshotted = snapshotRatesForTreatment(invoice.tax_treatment, {
-          cgst_rate: taxRate?.cgst_rate ?? new Prisma.Decimal(0),
-          sgst_rate: taxRate?.sgst_rate ?? new Prisma.Decimal(0),
-          igst_rate: taxRate?.igst_rate ?? new Prisma.Decimal(0),
+          cgst_rate: taxRate.cgst_rate,
+          sgst_rate: taxRate.sgst_rate,
+          igst_rate: taxRate.igst_rate,
         });
         lineInputs.push({
           organization_id: actor.organizationId,

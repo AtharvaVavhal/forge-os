@@ -130,7 +130,7 @@ describe("Finance — Invoices (e2e)", () => {
     expect(response.body.amount).toBe("11800.00");
   });
 
-  it("an HSN/SAC code with no matching tax rate defaults to 0 rates, not an error", async () => {
+  it("an HSN/SAC code with no matching tax rate is rejected (B9: no silent zero tax)", async () => {
     const company = await createTestCompany(app, finance.organizationId);
     const invoice = await createTestInvoice(app, finance.organizationId, company.id);
 
@@ -138,9 +138,8 @@ describe("Finance — Invoices (e2e)", () => {
       .put(`/api/v1/invoices/${invoice.id}/line-items`)
       .set(authHeaders(finance))
       .send({ lines: [{ description: "Untaxed", hsnSacCode: "000000", quantity: "1.00", unitPrice: "1000.00" }] });
-    expect(response.status).toBe(200);
-    expect(response.body.lineItems[0].cgstRate).toBe("0.00");
-    expect(response.body.lineItems[0].lineTotal).toBe("1000.00");
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe("TAX_RATE_NOT_FOUND");
   });
 
   it("5. draft-only editing: PATCH requires matching version (optimistic lock)", async () => {

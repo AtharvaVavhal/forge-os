@@ -82,6 +82,20 @@ export class InvitationService {
       });
     }
 
+    // B9 H5: company must belong to the caller's organization (Prisma FK alone is insufficient).
+    if (input.scope === InvitationScope.CLIENT && input.companyId) {
+      const company = await this.prisma.company.findFirst({
+        where: { id: input.companyId, organization_id: actor.organizationId },
+        select: { id: true },
+      });
+      if (!company) {
+        throw new NotFoundException({
+          code: "NOT_FOUND",
+          message: "Company not found.",
+        });
+      }
+    }
+
     const rawToken = randomBytes(32).toString("hex");
     const tokenHash = hashToken(rawToken);
     const ttlDays = this.config.get("auth.invitationTokenTtlDays", { infer: true });

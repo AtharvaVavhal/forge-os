@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
-import type { CreditNote, Prisma } from "@prisma/client";
+import { Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
+import { Prisma, type CreditNote } from "@prisma/client";
 import { PrismaService } from "../../../database/prisma.service";
 import { buildOffsetMeta, offsetSkipTake, type ListEnvelope } from "../../../common/pagination/offset-pagination";
 import { AuditService, AUDIT_ACTIONS } from "../../shared/audit.service";
@@ -57,6 +57,17 @@ export class CreditNotesService {
     });
     if (!invoice) {
       throw new NotFoundException({ code: "NOT_FOUND", message: "Invoice not found." });
+    }
+
+    // B9 H8: credit-note amount cannot exceed the invoice total (0.00 documentation notes remain allowed).
+    const amount = new Prisma.Decimal(dto.amount);
+    const invoiceAmount = new Prisma.Decimal(invoice.amount);
+    if (amount.lessThan(0) || amount.greaterThan(invoiceAmount)) {
+      throw new UnprocessableEntityException({
+        code: "CREDIT_NOTE_AMOUNT_INVALID",
+        message: "Credit note amount must be non-negative and not exceed the invoice total.",
+        details: { invoiceAmount: invoice.amount.toString(), requested: dto.amount },
+      });
     }
 
     const creditNote = await this.prisma.$transaction(async (tx) => {

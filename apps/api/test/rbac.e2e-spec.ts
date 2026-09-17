@@ -69,10 +69,14 @@ describe("RBAC (e2e)", () => {
   it("SALES may create a CLIENT invitation (allowed, per Doc 6 §2.3 footnote 7)", async () => {
     const session = await loginAs("SALES");
     const prisma = app.get((await import("../src/database/prisma.service")).PrismaService);
-    const org = await prisma.organization.findFirstOrThrow();
+    // B9: company must belong to the authenticated user's organization (not findFirst org).
+    const me = await request(app.getHttpServer())
+      .get("/api/v1/auth/me")
+      .set("Cookie", `forge_session=${session.cookie}`);
+    const organizationId = me.body.organizationId as string;
     const company = await prisma.company.create({
       data: {
-        organization_id: org.id,
+        organization_id: organizationId,
         name: "Phase 1 E2E RBAC Test Company",
         billing_state: "Maharashtra",
         billing_address: "Test fixture",

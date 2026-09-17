@@ -1,6 +1,7 @@
-import { Body, Controller, Get, HttpCode, Post, Query, Req, Res, UnauthorizedException } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Post, Query, Req, Res, UnauthorizedException, UseInterceptors } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
+import { NoStoreCacheInterceptor } from "../../../common/interceptors/no-store-cache.interceptor";
 import { PrismaService } from "../../../database/prisma.service";
 import { AuditService, AUDIT_ACTIONS } from "../../shared/audit.service";
 import { OrganizationContextService } from "../../shared/organization-context.service";
@@ -57,16 +58,19 @@ export class AuthController {
     await this.authService.logout(user, response);
   }
 
+  @UseInterceptors(NoStoreCacheInterceptor)
   @Get("session")
   session(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.session(user);
   }
 
+  @UseInterceptors(NoStoreCacheInterceptor)
   @Get("me")
   me(@CurrentUser() user: AuthenticatedUser) {
     return this.authService.session(user);
   }
 
+  @UseInterceptors(NoStoreCacheInterceptor)
   @Get("permissions")
   permissions(@CurrentUser() user: AuthenticatedUser) {
     return { permissions: this.authService.permissions(user) };

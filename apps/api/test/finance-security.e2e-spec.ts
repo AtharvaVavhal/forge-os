@@ -217,4 +217,45 @@ describe("Finance — RBAC, organization isolation, audit, rollback (e2e)", () =
       .send({ type: "CONTRIBUTION", amount: "-100.00", reason: "negative not allowed from client", sourceType: null, sourceId: null });
     expect(forgeFundResponse.status).toBe(400);
   });
+
+  it("B9 H4: SALES cannot list or attach invoice-parented documents", async () => {
+    const company = await createTestCompany(app, finance.organizationId);
+    const invoice = await createTestInvoice(app, finance.organizationId, company.id, {
+      status: "SENT",
+      amount: "500.00",
+    });
+
+    const list = await request(app.getHttpServer())
+      .get(`/api/v1/documents?invoiceId=${invoice.id}`)
+      .set(authHeaders(sales));
+    expect(list.status).toBe(403);
+
+    const create = await request(app.getHttpServer())
+      .post("/api/v1/documents")
+      .set(financeMutateHeaders(sales))
+      .send({
+        filename: "invoice.pdf",
+        storageKey: `${sales.organizationId}/invoice-attach.pdf`,
+        mimeType: "application/pdf",
+        sizeBytes: 1024,
+        category: "INVOICE",
+        invoiceId: invoice.id,
+      });
+    expect(create.status).toBe(403);
+  });
+
+  it("B9 H8: credit note amount cannot exceed invoice total", async () => {
+    const company = await createTestCompany(app, finance.organizationId);
+    const invoice = await createTestInvoice(app, finance.organizationId, company.id, {
+      status: "SENT",
+      amount: "100.00",
+    });
+
+    const response = await request(app.getHttpServer())
+      .post("/api/v1/credit-notes")
+      .set(financeMutateHeaders(finance))
+      .send({ invoiceId: invoice.id, reason: "GOODWILL", amount: "1000.00" });
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe("CREDIT_NOTE_AMOUNT_INVALID");
+  });
 });

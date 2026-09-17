@@ -115,6 +115,37 @@ export class RefundsService {
         await tx.payment.update({ where: { id: payment.id }, data: { status: PaymentStatus.REVERSED } });
       }
 
+      // B9 H7: reverse automatic Forge Fund contribution linked to this payment.
+      // Withdrawal is keyed by refund id so partial refunds remain unique under the
+      // partial unique index on (org, source_type, source_id, type).
+      const contribution = await tx.forgeFundEntry.findFirst({
+        where: {
+          organization_id: actor.organizationId,
+          source_type: "payment",
+          source_id: payment.id,
+          type: "CONTRIBUTION",
+        },
+      });
+      if (contribution) {
+        const withdrawalAmount = new Prisma.Decimal(contribution.amount)
+          .times(requestedAmount)
+          .dividedBy(new Prisma.Decimal(payment.amount))
+          .toDecimalPlaces(2);
+        if (withdrawalAmount.greaterThan(0)) {
+          await tx.forgeFundEntry.create({
+            data: {
+              organization_id: actor.organizationId,
+              type: "WITHDRAWAL",
+              amount: withdrawalAmount,
+              source_type: "refund",
+              source_id: created.id,
+              reason: `Automatic reversal for refund ${created.id} on payment ${payment.id}`,
+              approved_by: actor.id,
+            },
+          });
+        }
+      }
+
       const lockedInvoices = await tx.$queryRaw<
         Array<{ id: string; amount: Prisma.Decimal; paid_amount: Prisma.Decimal; status: string }>
       >`

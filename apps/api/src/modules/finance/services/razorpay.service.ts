@@ -61,7 +61,7 @@ export class RazorpayService {
       body: JSON.stringify({ amount: toPaise(amount), currency: "INR", receipt }),
     });
     if (!response.ok) {
-      this.logger.error(`Razorpay order creation failed: ${response.status} ${await response.text()}`);
+      this.logger.error(`Razorpay order creation failed: ${response.status}`);
       throw new ServiceUnavailableException({
         code: "RAZORPAY_ORDER_FAILED",
         message: "Could not create a Razorpay order.",
@@ -69,6 +69,23 @@ export class RazorpayService {
     }
     const body = (await response.json()) as { id: string; amount: number; currency: string };
     return { orderId: body.id, amount: fromPaise(body.amount).toString(), currency: body.currency, keyId };
+  }
+
+  /** Re-expose an already-created PENDING order without calling Razorpay again (B9 H6). */
+  viewExistingOrder(orderId: string, amount: Prisma.Decimal): RazorpayOrder {
+    const { keyId, configured } = this.razorpayConfig;
+    if (!configured || !keyId) {
+      throw new ServiceUnavailableException({
+        code: "RAZORPAY_NOT_CONFIGURED",
+        message: "Razorpay is not configured in this environment.",
+      });
+    }
+    return {
+      orderId,
+      amount: amount.toFixed(2),
+      currency: "INR",
+      keyId,
+    };
   }
 
   /** Document 5 §9.4: "Razorpay refund API call outside DB transaction." */

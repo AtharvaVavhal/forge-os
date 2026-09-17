@@ -15,12 +15,18 @@ export interface AppConfig {
     passwordHashCostFactor: number;
     passwordResetTokenTtlSeconds: number;
     invitationTokenTtlDays: number;
+    /** When true (non-production), invitation create may return the raw token. */
+    invitationExposeRawToken: boolean;
   };
   cookies: {
     /** Host-only cookie (no Domain attribute) unless explicitly configured
      * — Document 6 §5.2 item 5 leaves the exact Domain value open. */
     domain: string | undefined;
     secure: boolean;
+  };
+  storage: {
+    /** Optional dedicated HMAC secret for upload/download URL signatures. */
+    signingSecret: string | undefined;
   };
   google: {
     clientId: string | undefined;
@@ -58,16 +64,30 @@ export default (): AppConfig => {
   const googleClientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
   const googleRedirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI;
 
+  const corsOrigins = (process.env.CORS_ORIGINS ?? "http://localhost:3000")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  // B9: credentials are always enabled — reject wildcard / empty allowlists in production.
+  if (env === "production") {
+    if (corsOrigins.length === 0 || corsOrigins.some((o) => o === "*")) {
+      throw new Error(
+        "CORS_ORIGINS must be an explicit non-wildcard allowlist when NODE_ENV=production."
+      );
+    }
+    if (process.env.COOKIE_SECURE === "false") {
+      throw new Error("COOKIE_SECURE=false is not allowed when NODE_ENV=production.");
+    }
+  }
+
   return {
     env,
     port: parseInt(process.env.PORT ?? "4000", 10),
     // Frozen by Document 5 §2.1 — never change without updating the frozen spec.
     apiPrefix: "api/v1",
     cors: {
-      origins: (process.env.CORS_ORIGINS ?? "http://localhost:3000")
-        .split(",")
-        .map((origin) => origin.trim())
-        .filter(Boolean),
+      origins: corsOrigins,
     },
     database: {
       url: process.env.DATABASE_URL,
@@ -82,12 +102,17 @@ export default (): AppConfig => {
         10
       ),
       invitationTokenTtlDays: parseInt(process.env.INVITATION_TOKEN_TTL_DAYS ?? "7", 10),
+      // Production never returns raw invitation tokens over HTTP (B9 H2).
+      invitationExposeRawToken: env !== "production",
     },
     cookies: {
       domain: process.env.COOKIE_DOMAIN,
       secure: process.env.COOKIE_SECURE
         ? process.env.COOKIE_SECURE === "true"
         : env === "production",
+    },
+    storage: {
+      signingSecret: process.env.STORAGE_SIGNING_SECRET || undefined,
     },
     google: {
       clientId: googleClientId,

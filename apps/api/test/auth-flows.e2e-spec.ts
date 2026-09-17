@@ -143,6 +143,51 @@ describe("Auth flows (e2e)", () => {
       );
       expect(clearedCookie).toMatch(/forge_session=;/);
     });
+
+    it("B9 H1: invalidates retained forge_session JWT after logout (security stamp)", async () => {
+      const fixture = await createTestUser(app, { role: "SALES" });
+      const login = await request(app.getHttpServer())
+        .post("/api/v1/auth/login")
+        .send({ email: fixture.email, password: fixture.password });
+      const sessionCookie = extractCookie(
+        login.headers["set-cookie"] as unknown as string[],
+        "forge_session"
+      );
+      const csrfCookie = extractCookie(
+        login.headers["set-cookie"] as unknown as string[],
+        "forge_csrf"
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      await request(app.getHttpServer())
+        .post("/api/v1/auth/logout")
+        .set("Cookie", [`forge_session=${sessionCookie}`, `forge_csrf=${csrfCookie}`])
+        .set("X-CSRF-Token", csrfCookie ?? "")
+        .expect(204);
+
+      const after = await request(app.getHttpServer())
+        .get("/api/v1/auth/me")
+        .set("Cookie", `forge_session=${sessionCookie}`);
+      expect(after.status).toBe(401);
+    });
+
+    it("B9 M7: auth identity endpoints set Cache-Control: no-store", async () => {
+      const fixture = await createTestUser(app, { role: "FINANCE" });
+      const login = await request(app.getHttpServer())
+        .post("/api/v1/auth/login")
+        .send({ email: fixture.email, password: fixture.password });
+      const sessionCookie = extractCookie(
+        login.headers["set-cookie"] as unknown as string[],
+        "forge_session"
+      );
+
+      const me = await request(app.getHttpServer())
+        .get("/api/v1/auth/me")
+        .set("Cookie", `forge_session=${sessionCookie}`);
+      expect(me.status).toBe(200);
+      expect(String(me.headers["cache-control"] ?? "")).toMatch(/no-store/i);
+    });
   });
 
   describe("expired/revoked session", () => {

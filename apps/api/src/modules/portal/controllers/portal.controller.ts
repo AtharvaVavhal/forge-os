@@ -1,6 +1,7 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, Res } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, Res, UseInterceptors } from "@nestjs/common";
 import { Throttle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
+import { NoStoreCacheInterceptor } from "../../../common/interceptors/no-store-cache.interceptor";
 import { Public } from "../../auth/decorators/public.decorator";
 import { CurrentPortalUser } from "../decorators/current-portal-user.decorator";
 import { PortalLoginDto, PortalListQueryDto, CreatePortalSupportTicketDto } from "../dto/portal.dto";
@@ -51,6 +52,7 @@ export class PortalController {
     await this.auth.logout(client, response);
   }
 
+  @UseInterceptors(NoStoreCacheInterceptor)
   @Get("me")
   me(@CurrentPortalUser() client: AuthenticatedPortalUser) {
     return this.auth.me(client);

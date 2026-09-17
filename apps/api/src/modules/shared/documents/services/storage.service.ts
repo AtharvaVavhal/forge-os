@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import * as crypto from "crypto";
+import type { AppConfig } from "../../../../config/configuration";
 
 export const MAX_FILE_SIZE_BYTES = 26_214_400; // 25 MB
 
@@ -35,11 +37,17 @@ export interface PresignedDownloadResult {
 export class StorageService {
   private readonly signingSecret: string;
 
-  constructor() {
-    this.signingSecret =
-      process.env.STORAGE_SIGNING_SECRET ||
-      process.env.JWT_SECRET ||
-      "forge-storage-signing-secret-default-change-in-prod";
+  constructor(private readonly config: ConfigService<AppConfig, true>) {
+    // B9: never fall back to a hardcoded secret. Prefer STORAGE_SIGNING_SECRET;
+    // otherwise reuse the required session signing key (still server-only).
+    const storageSecret = this.config.get("storage.signingSecret", { infer: true });
+    const sessionSecret = this.config.get("auth.sessionJwtSigningKey", { infer: true });
+    this.signingSecret = storageSecret || sessionSecret;
+    if (!this.signingSecret || this.signingSecret.length < 32) {
+      throw new Error(
+        "STORAGE_SIGNING_SECRET (or SESSION_JWT_SIGNING_KEY) must be at least 32 characters."
+      );
+    }
   }
 
   assertValidFile(mimeType: string, sizeBytes: number): void {
@@ -55,6 +63,33 @@ export class StorageService {
       throw new BadRequestException({
         code: "UNSUPPORTED_MIME_TYPE",
         message: `MIME type "${mimeType}" is not allowed. Uploads must be documents, spreadsheets, images, or archives.`,
+      });
+    }
+  }
+
+  /**
+   * B9: storage keys must be org-prefixed and free of traversal sequences.
+   * Create/register must reject foreign or rebinding-friendly keys.
+   */
+  assertValidStorageKeyForOrg(storageKey: string, organizationId: string): void {
+    const prefix = `${organizationId}/`;
+    if (!storageKey.startsWith(prefix)) {
+      throw new BadRequestException({
+        code: "INVALID_STORAGE_KEY",
+        message: "storageKey must be issued for the caller's organization.",
+      });
+    }
+    const remainder = storageKey.slice(prefix.length);
+    if (
+      !remainder ||
+      remainder.includes("..") ||
+      remainder.includes("/") ||
+      remainder.includes("\\") ||
+      remainder.includes("\0")
+    ) {
+      throw new BadRequestException({
+        code: "INVALID_STORAGE_KEY",
+        message: "storageKey format is invalid.",
       });
     }
   }

@@ -123,6 +123,13 @@ export class AuthService {
     this.csrfService.clearToken(response);
 
     if (user) {
+      // B9 H1: bump updated_at so any retained forge_session JWT fails the
+      // security-stamp fence (matches portal logout / password-change behavior).
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { updated_at: new Date() },
+      });
+
       await this.audit.record({
         organizationId: user.organizationId,
         actorType: "USER",

@@ -65,7 +65,8 @@ class EnvironmentVariables {
 
   /** Cookie `Secure` flag. Document 6 §5.2 item 5 treats this as mandatory
    * in production HTTPS but doesn't freeze the exact toggle mechanism —
-   * defaults to true in production, false otherwise, overridable. */
+   * defaults to true in production, false otherwise, overridable.
+   * B9: `false` is rejected at boot when NODE_ENV=production. */
   @IsOptional()
   @IsBooleanString()
   COOKIE_SECURE?: string;
@@ -75,6 +76,18 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   COOKIE_DOMAIN?: string;
+
+  /**
+   * B9: HMAC secret for document upload/download URL signatures.
+   * Optional — when unset, StorageService falls back to SESSION_JWT_SIGNING_KEY.
+   * Never uses a hardcoded default.
+   */
+  @IsOptional()
+  @IsString()
+  @MinLength(32, {
+    message: "STORAGE_SIGNING_SECRET must be at least 32 characters when set.",
+  })
+  STORAGE_SIGNING_SECRET?: string;
 
   // --- Password hashing (Document 6 §3) -------------------------------------
 

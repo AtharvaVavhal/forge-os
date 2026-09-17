@@ -79,6 +79,24 @@ export class RazorpayOrdersService {
       });
     }
 
+    // B9 H6: reuse an existing open Razorpay checkout instead of creating N orders.
+    const existingPending = await this.prisma.payment.findFirst({
+      where: {
+        organization_id: params.organizationId,
+        invoice_id: invoice.id,
+        method: PaymentMethod.RAZORPAY,
+        status: PaymentStatus.PENDING,
+      },
+      orderBy: { created_at: "desc" },
+    });
+    if (existingPending?.razorpay_order_id) {
+      const order = this.razorpay.viewExistingOrder(
+        existingPending.razorpay_order_id,
+        existingPending.amount
+      );
+      return { ...order, paymentId: existingPending.id };
+    }
+
     // External HTTP first — Document 5 §13: no Razorpay I/O inside a Prisma txn.
     const order = await this.razorpay.createOrder(outstanding, invoice.id);
 

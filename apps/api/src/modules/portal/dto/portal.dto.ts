@@ -7,6 +7,7 @@ export class PortalLoginDto {
 
   @IsString()
   @MinLength(1)
+  @MaxLength(128)
   password!: string;
 }
 
