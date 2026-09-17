@@ -1,0 +1,246 @@
+@import "tailwindcss";
+
+/* ==================================================================
+   FORGE Business OS — design tokens (Document 2 §24 inventory)
+   Foundation only (Implementation Phase 0, Step 14): tokens are wired
+   so Phase 2 component work has a real system to build against. No
+   components are implemented here, and nothing from the marketing
+   site's decorative/motion CSS (forge-scene, capability-stage, etc.)
+   is copied — those are marketing-only devices per Document 1/2.
+   ================================================================== */
+
+:root {
+  /* --- Colors — existing brand tokens, unchanged values (Doc 2 §2) --- */
+  --color-ink: #17140f;
+  --color-paper: #f3efe7;
+  --color-paper-elev: #ffffff;
+  --color-ember: #b85a22;
+  --color-ember-soft: #e8dcc8;
+  --color-steel: #6b6459;
+  --color-ember-deep: #9a4a1c;
+  --color-ember-bright: #e0824a;
+
+  /* New, app-only surface: a table-header / recessed-area tint (Doc 2 §7) */
+  --color-surface-sunken: #eae4d8;
+
+  /* --- Semantic status colors — computed WCAG AA pairs (Doc 2 §3) ---
+     Every -deep/-bright pair below was validated the same way
+     ember-deep/ember-bright was: -deep on paper/paper-elev and -bright on
+     ink both clear 4.5:1 for normal text. Neutral reuses --color-steel;
+     Pending reuses steel + a dashed border (no new hue) — see Doc 2 §3. */
+  --color-success-deep: #3f6b37;
+  --color-success-bright: #7cae6e;
+  --color-success-soft: #e3ebdc;
+  --color-danger-deep: #8c2e22;
+  --color-danger-bright: #e2745f;
+  --color-danger-soft: #f3deda;
+  --color-warning-deep: #7a5e1e;
+  --color-warning-bright: #d9ae55;
+  --color-warning-soft: #f1e6c8;
+  --color-info-deep: #2e4a5c;
+  --color-info-bright: #7fa6c2;
+  --color-info-soft: #dee6ec;
+
+  /* --- Motion — preserved exactly from the marketing site (frozen) --- */
+  --duration-fast: 180ms;
+  --duration-standard: 320ms;
+  --duration-emphasis: 620ms;
+  /* New: continuous ambient loops (skeleton shimmer) aren't a discrete
+     state transition, so they get their own token rather than overloading
+     one of the three above (Doc 2 §8). */
+  --duration-shimmer: 1400ms;
+  --ease-out-forge: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-forge: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* --- Elevation — new named scale (Doc 2 §7); Tailwind's default shadow
+     utilities are NOT used because they're neutral-gray, not ink-tinted. --- */
+  --elevation-0: none;
+  --elevation-1: 0 2px 8px -4px rgba(23, 20, 15, 0.12);
+  --elevation-2: 0 8px 24px -8px rgba(23, 20, 15, 0.18);
+  --elevation-3: 0 24px 48px -16px rgba(23, 20, 15, 0.28);
+  --elevation-4: 0 16px 32px -12px rgba(23, 20, 15, 0.24);
+  --elevation-drawer: -24px 0 48px -16px rgba(23, 20, 15, 0.22);
+
+  /* --- Spacing — 4px base scale + semantic aliases (Doc 2 §5) --- */
+  --space-1: 0.25rem; /* 4px */
+  --space-2: 0.5rem; /* 8px */
+  --space-3: 0.75rem; /* 12px */
+  --space-4: 1rem; /* 16px */
+  --space-5: 1.25rem; /* 20px */
+  --space-6: 1.5rem; /* 24px */
+  --space-8: 2rem; /* 32px */
+  --space-10: 2.5rem; /* 40px */
+  --space-12: 3rem; /* 48px */
+  --space-16: 4rem; /* 64px */
+  --space-20: 5rem; /* 80px */
+
+  --space-page-x: var(--space-4); /* 16px mobile default */
+  --space-section-gap: var(--space-8);
+  --space-card-padding-compact: var(--space-4);
+  --space-card-padding-comfortable: var(--space-5);
+  --space-table-cell-x: var(--space-3);
+  --space-table-cell-y-compact: var(--space-2);
+  --space-table-cell-y-comfortable: var(--space-3);
+  --space-form-field-gap: var(--space-4);
+  --space-form-section-gap: var(--space-8);
+  --space-sidebar-x-collapsed: var(--space-3);
+  --space-sidebar-x-expanded: var(--space-4);
+  --space-sidebar-item-y: var(--space-2);
+  --space-modal-padding: var(--space-6);
+  --space-drawer-padding: var(--space-6);
+  --space-dashboard-gap: var(--space-4);
+
+  /* --- Typography scale (Doc 2 §4) — size / line-height / tracking per
+     level. Weight is applied via Tailwind font-weight utilities at each
+     use site, not baked in here, since Archivo is currently only loaded
+     at 600/700/800 (see layout.tsx) — the 400/500 addition Document
+     B3 §27 flags as an open decision is NOT applied in this file. --- */
+  --text-page-title-size: 1.75rem; /* 28px */
+  --text-page-title-leading: 1.2;
+  --text-page-title-tracking: -0.01em;
+
+  --text-section-title-size: 1.25rem; /* 20px */
+  --text-section-title-leading: 1.25;
+
+  --text-subsection-size: 1rem; /* 16px */
+  --text-subsection-leading: 1.3;
+
+  --text-body-size: 0.875rem; /* 14px */
+  --text-body-leading: 1.5;
+
+  --text-body-small-size: 0.8125rem; /* 13px */
+  --text-body-small-leading: 1.45;
+
+  --text-label-size: 0.8125rem; /* 13px */
+  --text-label-leading: 1.3;
+
+  --text-mono-label-size: 0.6875rem; /* 11px */
+  --text-mono-label-leading: 1.3;
+  --text-mono-label-tracking: 0.1em;
+
+  --text-metadata-size: 0.75rem; /* 12px */
+  --text-metadata-leading: 1.4;
+  --text-metadata-tracking: 0.02em;
+
+  --text-table-header-size: 0.6875rem; /* 11px */
+  --text-table-header-tracking: 0.08em;
+
+  --text-kpi-size: 1.75rem; /* 28px (range up to 32px) */
+  --text-kpi-leading: 1.1;
+
+  --text-financial-cell-size: 0.875rem; /* 14px */
+  --text-financial-summary-size: 1.25rem; /* 20px (range up to 24px) */
+
+  --text-button-size: 0.875rem; /* 14px */
+  --text-helper-size: 0.75rem; /* 12px */
+  --text-error-size: 0.75rem; /* 12px */
+
+  /* --- Z-index — new; no scale existed in the marketing site beyond ad hoc
+     z-40/z-50/z-100 values (Doc 2 §24). --- */
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-sidebar: 20;
+  --z-topbar: 30;
+  --z-dropdown: 40;
+  --z-drawer: 50;
+  --z-modal-scrim: 60;
+  --z-modal: 61;
+  --z-command-palette: 70;
+  --z-toast: 80;
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --space-page-x: var(--space-6); /* 24px desktop, matches Doc 2 §5 */
+    --space-dashboard-gap: var(--space-6);
+  }
+}
+
+/* Bridges the tokens above into Tailwind v4 utility classes — bg-ink,
+   text-ember-deep, border-steel/20, font-display, etc. — the same
+   `@theme inline` pattern the marketing site's globals.css already proves
+   works, applied to this app's own token set. Radius is deliberately NOT
+   redeclared here: Doc 2 §6 uses exactly Tailwind's default rounded-lg /
+   rounded-xl / rounded-2xl / rounded-full, so no override is needed —
+   introducing custom radius tokens would be the "random radius value"
+   Doc 2 explicitly prohibits. */
+@theme inline {
+  --color-ink: var(--color-ink);
+  --color-paper: var(--color-paper);
+  --color-paper-elev: var(--color-paper-elev);
+  --color-surface-sunken: var(--color-surface-sunken);
+  --color-ember: var(--color-ember);
+  --color-ember-soft: var(--color-ember-soft);
+  --color-ember-deep: var(--color-ember-deep);
+  --color-ember-bright: var(--color-ember-bright);
+  --color-steel: var(--color-steel);
+
+  --color-success-deep: var(--color-success-deep);
+  --color-success-bright: var(--color-success-bright);
+  --color-success-soft: var(--color-success-soft);
+  --color-danger-deep: var(--color-danger-deep);
+  --color-danger-bright: var(--color-danger-bright);
+  --color-danger-soft: var(--color-danger-soft);
+  --color-warning-deep: var(--color-warning-deep);
+  --color-warning-bright: var(--color-warning-bright);
+  --color-warning-soft: var(--color-warning-soft);
+  --color-info-deep: var(--color-info-deep);
+  --color-info-bright: var(--color-info-bright);
+  --color-info-soft: var(--color-info-soft);
+
+  --font-display: var(--font-archivo), sans-serif;
+  --font-body: var(--font-source-serif), serif;
+  --font-mono: var(--font-ibm-plex-mono), monospace;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+  }
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+::selection {
+  background: var(--color-ember-soft);
+  color: var(--color-ink);
+}
+
+/* Single unified focus treatment (Doc 2 §21) — resolves the marketing
+   codebase's two divergent focus styles (a global ember-deep outline vs.
+   form inputs' separate ink/20 ring) into exactly one rule, applied
+   everywhere, from the start. */
+:focus-visible {
+  outline: 2px solid var(--color-ember-deep);
+  outline-offset: 2px;
+  border-radius: 2px;
+}

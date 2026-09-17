@@ -2,7 +2,20 @@ node_modules/
 dist/
 .env
 .env.local
+.env.*.local
 *.log
 .DS_Store
 prisma/*.db
 prisma/*.db-journal
+
+# apps/web (Next.js)
+.next/
+out/
+
+# apps/api (Nest build output already covered by dist/ above)
+
+# test coverage
+coverage/
+
+# TypeScript incremental build info
+*.tsbuildinfo

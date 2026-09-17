@@ -1,0 +1,11 @@
+{
+  "name": "@forge/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Generic typed fetch boundary for the FORGE Business OS API (/api/v1). Base URL, credentials/cookie handling, request-id + idempotency-key headers, and error-envelope parsing only — no entity-specific request/response DTOs. Those are added per-feature once each domain module's real endpoints exist.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@forge/types": "*"
+  }
+}

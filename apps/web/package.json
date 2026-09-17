@@ -1,0 +1,32 @@
+{
+  "name": "@forge/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "FORGE Business OS — Next.js frontend. Phase 0 foundation only: App Router shell, (auth)/(workspace) route groups, design tokens, TanStack Query + typed API client wiring. No domain pages (dashboard widgets, CRM, Sales, Projects, Finance, Team, Settings, Portal) are implemented yet — see docs/IMPLEMENTATION-PHASE-0.md.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@forge/api-client": "*",
+    "@forge/types": "*",
+    "@tanstack/react-query": "^5.103.1",
+    "next": "^16.3.5",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "eslint": "^9.17.0",
+    "eslint-config-next": "^16.3.5",
+    "tailwindcss": "^4.3.3",
+    "typescript": "5.9.2"
+  }
+}

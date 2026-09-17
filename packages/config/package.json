@@ -1,0 +1,9 @@
+{
+  "name": "@forge/config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared TypeScript strictness baseline for FORGE Business OS apps. Each app still owns its own module system / framework-specific compiler options — this package only centralizes the strictness flags that should never drift between apps/api and apps/web.",
+  "files": [
+    "tsconfig.base.json"
+  ]
+}

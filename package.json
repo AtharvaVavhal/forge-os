@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "FORGE Business OS — NestJS + PostgreSQL + Prisma backend (greenfield). Not the marketing website.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
@@ -11,7 +15,20 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "db:seed": "prisma db seed",
-    "db:setup": "prisma migrate deploy && prisma db seed"
+    "db:setup": "prisma migrate deploy && prisma db seed",
+    "dev:api": "npm run start:dev --workspace apps/api",
+    "dev:web": "npm run dev --workspace apps/web",
+    "build:api": "npm run build --workspace apps/api",
+    "build:web": "npm run build --workspace apps/web",
+    "build": "npm run build:api && npm run build:web",
+    "lint:api": "npm run lint --workspace apps/api",
+    "lint:web": "npm run lint --workspace apps/web",
+    "lint": "npm run lint:api && npm run lint:web",
+    "typecheck:api": "npm run typecheck --workspace apps/api",
+    "typecheck:web": "npm run typecheck --workspace apps/web",
+    "typecheck": "npm run typecheck:api && npm run typecheck:web",
+    "test:api": "npm run test --workspace apps/api",
+    "test": "npm run test:api"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
