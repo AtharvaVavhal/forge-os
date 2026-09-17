@@ -7,6 +7,7 @@ import helmet from "helmet";
 import { AppModule } from "./app.module";
 import type { AppConfig } from "./config/configuration";
 import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
+import { CamelCaseResponseInterceptor } from "./common/interceptors/camel-case-response.interceptor";
 import { LoggingInterceptor } from "./common/interceptors/logging.interceptor";
 import { RequestIdInterceptor } from "./common/interceptors/request-id.interceptor";
 
@@ -51,8 +52,17 @@ async function bootstrap(): Promise<void> {
 
   // --- Consistent error envelope + request-id/logging foundation -----------
   // Order matters: RequestIdInterceptor must run before LoggingInterceptor
-  // so `request.id` exists by the time logging reads it.
-  app.useGlobalInterceptors(new RequestIdInterceptor(), new LoggingInterceptor());
+  // so `request.id` exists by the time logging reads it. CamelCaseResponse
+  // transforms every response body's keys from the Prisma schema's
+  // snake_case to camelCase (Document 5's DTOs are camelCase on input;
+  // this keeps output consistent — see camel-case.ts) — its order
+  // relative to the other two doesn't matter, since neither reads the
+  // response payload.
+  app.useGlobalInterceptors(
+    new RequestIdInterceptor(),
+    new LoggingInterceptor(),
+    new CamelCaseResponseInterceptor()
+  );
   app.useGlobalFilters(new AllExceptionsFilter());
 
   // --- Graceful shutdown ------------------------------------------------------

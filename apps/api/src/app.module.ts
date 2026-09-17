@@ -12,6 +12,7 @@ import { CsrfGuard } from "./modules/auth/guards/csrf.guard";
 import { JwtAuthGuard } from "./modules/auth/guards/jwt-auth.guard";
 import { PermissionsGuard } from "./modules/auth/guards/permissions.guard";
 import { SharedModule } from "./modules/shared/shared.module";
+import { CrmModule } from "./modules/crm/crm.module";
 
 @Module({
   imports: [
@@ -43,8 +44,9 @@ import { SharedModule } from "./modules/shared/shared.module";
     SharedModule,
     HealthModule,
     AuthModule,
-    // Domain modules (crm, sales, projects, finance, team, portal) are
-    // added here starting in a later phase — see src/modules/README.md.
+    CrmModule,
+    // Remaining domain modules (sales, projects, finance, team, portal)
+    // are added here starting in a later phase — see src/modules/README.md.
   ],
   providers: [
     // Global guard chain, explicit order (Step 8/9/12):

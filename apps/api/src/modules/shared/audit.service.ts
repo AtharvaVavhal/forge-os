@@ -85,6 +85,12 @@ export const AUDIT_ACTIONS = {
   INVITATION_REVOKED: "invitation.revoked",
   INVITATION_ACCEPTED: "invitation.accepted",
   INVITATION_ACCEPT_REJECTED: "invitation.accept_rejected",
+  // B2 CRM (Document 5 §12.1/§12.2 "Audit" columns; Document 6 §17 Tier A).
+  LEAD_TRANSITIONED: "lead.transitioned",
+  LEAD_CONVERTED: "lead.converted",
+  DEAL_TRANSITIONED: "deal.transitioned",
+  DEAL_REOPENED: "deal.reopened",
+  DEAL_BULK_REASSIGNED: "deal.bulk_reassigned",
 } as const;
 
 /**
