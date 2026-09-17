@@ -96,6 +96,16 @@ export const AUDIT_ACTIONS = {
   PROPOSAL_SENT: "proposal.sent",
   PROPOSAL_TRANSITIONED: "proposal.transitioned",
   PROPOSAL_REVISED: "proposal.revised",
+  // B4 Projects (Document 5 §12.4, §19's per-route Audit column).
+  PROJECT_STATUS_CHANGED: "project.status_changed",
+  PROJECT_PHASE_CHANGED: "project.phase_changed",
+  PROJECT_PHASE_OVERRIDDEN: "project.phase_overridden",
+  PROJECT_HANDOVER_ITEM_COMPLETED: "project.handover_item_completed",
+  PROJECT_COMPLETED: "project.completed",
+  MILESTONE_TRANSITIONED: "milestone.transitioned",
+  MILESTONE_REVERTED: "milestone.reverted",
+  TASK_ASSIGNED: "task.assigned",
+  TASK_REOPENED: "task.reopened",
 } as const;
 
 /**

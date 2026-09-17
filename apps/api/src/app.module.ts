@@ -14,6 +14,7 @@ import { PermissionsGuard } from "./modules/auth/guards/permissions.guard";
 import { SharedModule } from "./modules/shared/shared.module";
 import { CrmModule } from "./modules/crm/crm.module";
 import { SalesModule } from "./modules/sales/sales.module";
+import { ProjectsModule } from "./modules/projects/projects.module";
 
 @Module({
   imports: [
@@ -47,8 +48,9 @@ import { SalesModule } from "./modules/sales/sales.module";
     AuthModule,
     CrmModule,
     SalesModule,
-    // Remaining domain modules (projects, finance, team, portal) are
-    // added here starting in a later phase — see src/modules/README.md.
+    ProjectsModule,
+    // Remaining domain modules (finance, team, portal) are added here
+    // starting in a later phase — see src/modules/README.md.
   ],
   providers: [
     // Global guard chain, explicit order (Step 8/9/12):
