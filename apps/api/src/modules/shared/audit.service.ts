@@ -96,6 +96,7 @@ export const AUDIT_ACTIONS = {
   PROPOSAL_SENT: "proposal.sent",
   PROPOSAL_TRANSITIONED: "proposal.transitioned",
   PROPOSAL_REVISED: "proposal.revised",
+  PROPOSAL_ACCEPTED: "proposal.accepted",
   // B4 Projects (Document 5 §12.4, §19's per-route Audit column).
   PROJECT_STATUS_CHANGED: "project.status_changed",
   PROJECT_PHASE_CHANGED: "project.phase_changed",
@@ -121,6 +122,11 @@ export const AUDIT_ACTIONS = {
   // B6 Team + Shared Systems (Document 5 §19; Document 6 §17 Tier A & B)
   DOCUMENT_DELETED: "document.deleted",
   NOTE_VISIBILITY_CHANGED: "note.visibility_changed",
+  // B7 Client Portal (Document 5 §19 portal auth audit column)
+  PORTAL_LOGIN_SUCCEEDED: "portal.auth.login_succeeded",
+  PORTAL_LOGIN_FAILED: "portal.auth.login_failed",
+  PORTAL_LOGIN_REJECTED_INACTIVE: "portal.auth.login_rejected_inactive",
+  PORTAL_LOGOUT: "portal.auth.logout",
 } as const;
 
 /**

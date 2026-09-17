@@ -55,5 +55,8 @@ import { RazorpayOrdersService } from "./services/razorpay-orders.service";
     RazorpayService,
     RazorpayOrdersService,
   ],
+  // PortalModule imports this narrowly for `createOrderForPortalInvoice`
+  // (Document 5 §11 pay) — no other finance write surfaces are exported.
+  exports: [RazorpayOrdersService],
 })
 export class FinanceModule {}

@@ -34,6 +34,13 @@ import { CsrfGuard } from "./guards/csrf.guard";
     PermissionsGuard,
     CsrfGuard,
   ],
-  exports: [SessionService, CsrfService, JwtAuthGuard, PermissionsGuard, CsrfGuard],
+  exports: [
+    SessionService,
+    CsrfService,
+    PasswordService,
+    JwtAuthGuard,
+    PermissionsGuard,
+    CsrfGuard,
+  ],
 })
 export class AuthModule {}

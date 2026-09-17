@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
+import { isPortalHttpPath } from "../../../common/http/is-portal-path";
 import { PrismaService } from "../../../database/prisma.service";
 import { IS_PUBLIC_KEY } from "../decorators/public.decorator";
 import { SessionService, SESSION_COOKIE_NAME } from "../services/session.service";
@@ -68,13 +69,20 @@ export class JwtAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+
+    // Portal plane is owned by PortalAuthGuard (Document 6 §1.1) — never
+    // accept forge_session / aud:internal on /portal/* routes.
+    if (isPortalHttpPath(request)) {
+      return true;
+    }
+
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
     if (isPublic) return true;
 
-    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const cookies = request.cookies as Record<string, string | undefined> | undefined;
     const token = cookies?.[SESSION_COOKIE_NAME];
 

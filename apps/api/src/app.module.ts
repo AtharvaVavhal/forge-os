@@ -18,6 +18,8 @@ import { SalesModule } from "./modules/sales/sales.module";
 import { ProjectsModule } from "./modules/projects/projects.module";
 import { FinanceModule } from "./modules/finance/finance.module";
 import { TeamModule } from "./modules/team/team.module";
+import { PortalModule } from "./modules/portal/portal.module";
+import { PortalAuthGuard } from "./modules/portal/guards/portal-auth.guard";
 
 @Module({
   imports: [
@@ -54,23 +56,24 @@ import { TeamModule } from "./modules/team/team.module";
     ProjectsModule,
     FinanceModule,
     TeamModule,
-    // Remaining domain modules (portal) are added here starting in
-    // a later phase — see src/modules/README.md.
+    PortalModule,
   ],
   providers: [
-    // Global guard chain, explicit order (Step 8/9/12):
+    // Global guard chain, explicit order (Step 8/9/12 + B7 portal plane):
     //   1. ThrottlerGuard — reject abusive request volume before anything
     //      else runs, including on unauthenticated routes like /auth/login.
-    //   2. JwtAuthGuard — authenticate (fail-closed; @Public() opts out).
-    //   3. PermissionsGuard — authorize by role (Step 9), no-op if a route
+    //   2. JwtAuthGuard — authenticate internal plane (skips /portal/*).
+    //   3. PortalAuthGuard — authenticate portal plane (`portal_session`).
+    //   4. PermissionsGuard — authorize by role (Step 9), no-op if a route
     //      declares no @RequirePermissions(...).
-    //   4. CsrfGuard — validate the double-submit token on authenticated,
+    //   5. CsrfGuard — validate the double-submit token on authenticated,
     //      state-changing requests (Step 12), after we know who's asking.
     // Registered together, in this file, in this order, specifically so
     // the evaluation order is explicit and doesn't depend on cross-module
     // provider-aggregation order.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useExisting: JwtAuthGuard },
+    { provide: APP_GUARD, useExisting: PortalAuthGuard },
     { provide: APP_GUARD, useExisting: PermissionsGuard },
     { provide: APP_GUARD, useExisting: CsrfGuard },
     // B5 Finance (Document 5 §2.7) — a global interceptor, but a no-op for

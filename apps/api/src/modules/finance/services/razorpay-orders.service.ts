@@ -25,8 +25,40 @@ export class RazorpayOrdersService {
     actor: AuthenticatedUser,
     invoiceId: string
   ): Promise<RazorpayOrder & { paymentId: string }> {
+    return this.createOrderForScopedInvoice({
+      organizationId: actor.organizationId,
+      invoiceId,
+    });
+  }
+
+  /**
+   * Portal pay path (Document 5 §11) — same Razorpay order flow as internal,
+   * but additionally requires `company_id` match so a ClientUser cannot
+   * start checkout on another company's invoice.
+   */
+  async createOrderForPortalInvoice(params: {
+    organizationId: string;
+    companyId: string;
+    invoiceId: string;
+  }): Promise<RazorpayOrder & { paymentId: string }> {
+    return this.createOrderForScopedInvoice({
+      organizationId: params.organizationId,
+      companyId: params.companyId,
+      invoiceId: params.invoiceId,
+    });
+  }
+
+  private async createOrderForScopedInvoice(params: {
+    organizationId: string;
+    companyId?: string;
+    invoiceId: string;
+  }): Promise<RazorpayOrder & { paymentId: string }> {
     const invoice = await this.prisma.invoice.findFirst({
-      where: { id: invoiceId, organization_id: actor.organizationId },
+      where: {
+        id: params.invoiceId,
+        organization_id: params.organizationId,
+        ...(params.companyId ? { company_id: params.companyId } : {}),
+      },
     });
     if (!invoice) {
       throw new NotFoundException({ code: "NOT_FOUND", message: "Invoice not found." });
@@ -52,7 +84,7 @@ export class RazorpayOrdersService {
 
     const pending = await this.prisma.payment.create({
       data: {
-        organization_id: actor.organizationId,
+        organization_id: params.organizationId,
         invoice_id: invoice.id,
         amount: outstanding,
         method: PaymentMethod.RAZORPAY,
