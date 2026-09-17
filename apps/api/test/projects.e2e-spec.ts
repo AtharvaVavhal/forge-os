@@ -92,6 +92,26 @@ describe("Projects Module (e2e)", () => {
       expect(tplRes.status).toBe(200);
       expect(Array.isArray(tplRes.body)).toBe(true);
     });
+
+    it("TEAM_MEMBER is scoped to assigned projects (403 on unassigned project)", async () => {
+      const company = await createTestCompany(app, operations.organizationId);
+      const unassignedProject = await createTestProject(app, operations.organizationId, company.id, operations.userId);
+
+      // Unassigned project detail returns 403
+      const getRes = await request(app.getHttpServer())
+        .get(`/api/v1/projects/${unassignedProject.id}`)
+        .set(authHeaders(teamMember));
+      expect(getRes.status).toBe(403);
+      expect(getRes.body.error.code).toBe("FORBIDDEN_PERMISSION");
+
+      // Unassigned project not present in TEAM_MEMBER list
+      const listRes = await request(app.getHttpServer())
+        .get("/api/v1/projects")
+        .set(authHeaders(teamMember));
+      expect(listRes.status).toBe(200);
+      const ids = listData<{ id: string }>(listRes.body).map((p) => p.id);
+      expect(ids).not.toContain(unassignedProject.id);
+    });
   });
 
   describe("2. Project Lifecycle & CRUD", () => {
@@ -239,7 +259,7 @@ describe("Projects Module (e2e)", () => {
   });
 
   describe("4. Project Phase State Machine & Gating", () => {
-    it("linear progression: PLANNING -> DESIGN -> DEVELOPMENT", async () => {
+    it("linear progression: PLANNING -> DESIGN -> DEVELOPMENT -> QA -> CLIENT_REVIEW", async () => {
       const company = await createTestCompany(app, operations.organizationId);
       const project = await createTestProject(app, operations.organizationId, company.id, operations.userId, {
         phase: ProjectPhase.PLANNING,
@@ -258,6 +278,62 @@ describe("Projects Module (e2e)", () => {
         .send({ to: "DEVELOPMENT" });
       expect(res2.status).toBe(200);
       expect(res2.body.phase).toBe("DEVELOPMENT");
+
+      const res3 = await request(app.getHttpServer())
+        .post(`/api/v1/projects/${project.id}/phase`)
+        .set(authHeaders(operations))
+        .send({ to: "QA" });
+      expect(res3.status).toBe(200);
+      expect(res3.body.phase).toBe("QA");
+
+      const res4 = await request(app.getHttpServer())
+        .post(`/api/v1/projects/${project.id}/phase`)
+        .set(authHeaders(operations))
+        .send({ to: "CLIENT_REVIEW" });
+      expect(res4.status).toBe(200);
+      expect(res4.body.phase).toBe("CLIENT_REVIEW");
+    });
+
+    it("linear progression: DEPLOYMENT -> HANDOVER -> COMPLETED with checklist enforcement", async () => {
+      const company = await createTestCompany(app, operations.organizationId);
+      const project = await createTestProject(app, operations.organizationId, company.id, operations.userId, {
+        phase: ProjectPhase.DEPLOYMENT,
+        handoverChecklist: [
+          { item: "Production DNS", done: false, done_at: null, done_by: null },
+        ],
+      });
+
+      // DEPLOYMENT -> HANDOVER succeeds
+      const res1 = await request(app.getHttpServer())
+        .post(`/api/v1/projects/${project.id}/phase`)
+        .set(authHeaders(operations))
+        .send({ to: "HANDOVER" });
+      expect(res1.status).toBe(200);
+      expect(res1.body.phase).toBe("HANDOVER");
+
+      // HANDOVER -> COMPLETED fails when checklist is incomplete (422)
+      const resIncomplete = await request(app.getHttpServer())
+        .post(`/api/v1/projects/${project.id}/phase`)
+        .set(authHeaders(operations))
+        .send({ to: "COMPLETED" });
+      expect(resIncomplete.status).toBe(422);
+      expect(resIncomplete.body.error.code).toBe("HANDOVER_CHECKLIST_INCOMPLETE");
+
+      // Complete the checklist item
+      await request(app.getHttpServer())
+        .patch(`/api/v1/projects/${project.id}/handover-checklist`)
+        .set(authHeaders(operations))
+        .send({ items: [{ item: "Production DNS", done: true }] });
+
+      // HANDOVER -> COMPLETED succeeds now
+      const resDone = await request(app.getHttpServer())
+        .post(`/api/v1/projects/${project.id}/phase`)
+        .set(authHeaders(operations))
+        .send({ to: "COMPLETED" });
+      expect(resDone.status).toBe(200);
+      expect(resDone.body.phase).toBe("COMPLETED");
+      expect(resDone.body.status).toBe("COMPLETED");
+      expect(resDone.body.completedAt).toBeTruthy();
     });
 
     it("phase regression is rejected (409)", async () => {
@@ -438,9 +514,6 @@ describe("Projects Module (e2e)", () => {
 
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
-      expect(res.body.length).toBeGreaterThan(0);
-      expect(res.body[0].id).toBeDefined();
-      expect(res.body[0].name).toBeDefined();
     });
   });
 

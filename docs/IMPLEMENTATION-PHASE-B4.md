@@ -59,9 +59,11 @@ Phase B4 delivers the complete, self-contained Projects domain module for FORGE 
   1. `PLANNING`
   2. `DESIGN`
   3. `DEVELOPMENT`
-  4. `CLIENT_REVIEW`
-  5. `DEPLOYMENT`
-  6. `COMPLETED`
+  4. `QA`
+  5. `CLIENT_REVIEW`
+  6. `DEPLOYMENT`
+  7. `HANDOVER`
+  8. `COMPLETED`
 - **Policy Rules:**
   - Forward single-step progression is standard.
   - Phase regression (moving backward) is forbidden (`409 PROJECT_INVALID_PHASE_REGRESSION`).
@@ -70,7 +72,8 @@ Phase B4 delivers the complete, self-contained Projects domain module for FORGE 
 ### F. Phase Gates
 - **Gating Rules Enforced:**
   - **`CLIENT_REVIEW` → `DEPLOYMENT` Gate:** Blocked unless all milestones for the project marked with `requires_client_approval: true` have been approved (`approved_at != null` and `status == 'COMPLETED'`). If any approval is missing, rejects with `422 PHASE_GATE_FAILED`.
-  - **`DEPLOYMENT` → `COMPLETED` Gate:** Blocked unless the project handover checklist is 100% complete (all checklist items have `done: true`). Rejects with `422 HANDOVER_CHECKLIST_INCOMPLETE`.
+  - **`DEPLOYMENT` → `HANDOVER`:** Follows standard linear sequence. Attempting to jump over `HANDOVER` directly to `COMPLETED` without override is a phase skip and fails with `409 PHASE_SKIP_REQUIRES_OVERRIDE`.
+  - **`HANDOVER` → `COMPLETED` Gate:** Blocked unless the project handover checklist is 100% complete (all checklist items have `done: true`). Rejects with `422 HANDOVER_CHECKLIST_INCOMPLETE`.
 
 ### G. Phase Skip Override
 - **Endpoint:** `POST /projects/:id/phase`
@@ -100,10 +103,9 @@ Phase B4 delivers the complete, self-contained Projects domain module for FORGE 
 - **Endpoint:** `GET /project-templates`
 - **Design:** Configuration-based in-memory templates only. No custom database models or mutable template endpoints were invented.
 - **Configured Templates:**
-  - `web-standard`: Web Application Standard
-  - `mobile-app`: Mobile Application Build
-  - `maintenance-retainer`: Maintenance & Retainer Support
-- **Output:** Returns array of template specifications with phase defaults and standard milestone definitions.
+  - In accordance with the frozen architecture and strict non-invention mandate, no arbitrary template IDs or names are invented.
+  - `GET /project-templates` returns the in-memory configured templates array (currently `[]` since no specific template definitions are frozen in the schema or API specifications).
+- **Output:** Returns array of configured template objects `[{ id, name }]`.
 
 ### K. Milestones
 - **Endpoints:**
@@ -190,14 +192,14 @@ Implemented exclusively using the existing append-only `AuditService`:
 ## Verification & Test Results
 
 ### 1. New B4 Projects E2E Test Suite (`apps/api/test/projects.e2e-spec.ts`)
-- **Total Tests:** 34
-- **Passed:** 34
+- **Total Tests:** 36
+- **Passed:** 36
 - **Failed:** 0
 - **Suites:**
-  1. Authentication & RBAC (4 tests)
+  1. Authentication & RBAC (5 tests)
   2. Project Lifecycle & CRUD (5 tests)
   3. Project Status State Machine (1 test)
-  4. Project Phase State Machine & Gating (6 tests)
+  4. Project Phase State Machine & Gating (7 tests)
   5. Handover Checklist & Project Completion (3 tests)
   6. Project Templates (1 test)
   7. Milestones (2 tests)

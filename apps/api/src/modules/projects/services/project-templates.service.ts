@@ -14,9 +14,7 @@ export interface ProjectTemplateConfig {
  */
 @Injectable()
 export class ProjectTemplatesService {
-  private readonly templates: ProjectTemplateConfig[] = [
-    { id: "standard-project", name: "Standard Project" },
-  ];
+  private readonly templates: ProjectTemplateConfig[] = [];
 
   list(): ProjectTemplateConfig[] {
     return this.templates;
