@@ -27,6 +27,31 @@ export class PresignUploadDto {
 
   @IsEnum(DocumentCategory)
   category!: DocumentCategory;
+
+  /**
+   * Optional for roles with unrestricted documents.manage. Required (exactly
+   * one parent) for TEAM_MEMBER so Document 5 §4.3 "upload on assigned" can
+   * be enforced before issuing a storage key.
+   */
+  @IsOptional()
+  @IsUUID()
+  companyId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  contactId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  dealId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  projectId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  invoiceId?: string;
 }
 
 export class CreateDocumentDto {

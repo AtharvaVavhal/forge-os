@@ -32,7 +32,7 @@ export class DocumentsController {
 
   @RequirePermissions("documents.manage")
   @Post("presign-upload")
-  presignUpload(
+  async presignUpload(
     @CurrentUser() actor: AuthenticatedUser,
     @Body() dto: PresignUploadDto
   ) {

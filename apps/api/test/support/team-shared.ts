@@ -112,8 +112,8 @@ export async function cleanupTeamSharedTestData(
       where: { recipient_id: { in: testUserIds } },
     }).catch(() => {});
     await prisma.document.deleteMany({
-      where: { uploaded_by: { in: testUserIds } },
-    }).catch(() => {});
+    where: { uploaded_by: { in: testUserIds } },
+  }).catch(() => {});
     await prisma.note.deleteMany({
       where: { created_by: { in: testUserIds } },
     }).catch(() => {});
@@ -127,7 +127,22 @@ export async function cleanupTeamSharedTestData(
   }).catch(() => {});
 
   await prisma.document.deleteMany({
-    where: { filename: { in: ["Architecture.pdf", "Project_Proposal.pdf"] } },
+    where: {
+      OR: [
+        { filename: { in: ["Architecture.pdf", "Project_Proposal.pdf"] } },
+        { filename: { startsWith: TEAM_SHARED_TEST_PREFIX } },
+        { filename: { in: [
+          "company-secret.pdf",
+          "unassigned-project.pdf",
+          "assigned-project.pdf",
+          "assigned-upload.pdf",
+          "other-org.pdf",
+          "leak.pdf",
+        ] } },
+        { project: { name: { startsWith: TEAM_SHARED_TEST_PREFIX } } },
+        { company: { name: { startsWith: TEAM_SHARED_TEST_PREFIX } } },
+      ],
+    },
   }).catch(() => {});
 
   await prisma.note.deleteMany({
@@ -143,6 +158,19 @@ export async function cleanupTeamSharedTestData(
 
   await prisma.task.deleteMany({
     where: { title: { startsWith: TEAM_SHARED_TEST_PREFIX } },
+  }).catch(() => {});
+
+  await prisma.deal.deleteMany({
+    where: { title: { startsWith: TEAM_SHARED_TEST_PREFIX } },
+  }).catch(() => {});
+
+  await prisma.contact.deleteMany({
+    where: {
+      OR: [
+        { name: { startsWith: TEAM_SHARED_TEST_PREFIX } },
+        { email: { startsWith: TEAM_SHARED_TEST_PREFIX } },
+      ],
+    },
   }).catch(() => {});
 
   await prisma.project.deleteMany({

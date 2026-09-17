@@ -1,9 +1,16 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { ActorType, Document, Prisma, Visibility } from "@prisma/client";
+import {
+  ActorType,
+  Document,
+  Prisma,
+  UserRole,
+  Visibility,
+} from "@prisma/client";
 import { PrismaService } from "../../../../database/prisma.service";
 import {
   buildCursorMeta,
@@ -12,6 +19,14 @@ import {
 } from "../../../../common/pagination/cursor-pagination";
 import type { ListEnvelope } from "../../../../common/pagination/offset-pagination";
 import type { AuthenticatedUser } from "../../../auth/types/authenticated-request.interface";
+import {
+  assertCrmRoleMayAccessLeadsOrDeals,
+  assertTeamMemberMayViewCompanyOrContact,
+} from "../../../crm/policies/resource-authorization";
+import {
+  assertTeamMemberMayAccessProject,
+  teamMemberProjectWhere,
+} from "../../../projects/policies/resource-authorization";
 import { AuditService, AUDIT_ACTIONS } from "../../audit.service";
 import {
   PresignedDownloadResult,
@@ -24,6 +39,14 @@ import type {
   PresignUploadDto,
 } from "../dto/document.dto";
 
+type DocumentParentIds = {
+  companyId?: string;
+  contactId?: string;
+  dealId?: string;
+  projectId?: string;
+  invoiceId?: string;
+};
+
 @Injectable()
 export class DocumentsService {
   constructor(
@@ -32,10 +55,17 @@ export class DocumentsService {
     private readonly audit: AuditService
   ) {}
 
-  presignUpload(
+  async presignUpload(
     actor: AuthenticatedUser,
     dto: PresignUploadDto
-  ): PresignedUploadResult {
+  ): Promise<PresignedUploadResult> {
+    // Document 5 §4.3: TEAM_MEMBER documents.manage is "upload on assigned" —
+    // parent must be known and authorized before a storage key is issued.
+    if (actor.role === UserRole.TEAM_MEMBER) {
+      this.assertExactlyOneParent(dto);
+      await this.assertParentInOrgAndAuthorized(actor, dto);
+    }
+
     return this.storage.generateUploadUrl(
       actor.organizationId,
       dto.filename,
@@ -48,78 +78,8 @@ export class DocumentsService {
     actor: AuthenticatedUser,
     dto: CreateDocumentDto
   ): Promise<Document> {
-    const parentCount = [
-      dto.companyId,
-      dto.contactId,
-      dto.dealId,
-      dto.projectId,
-      dto.invoiceId,
-    ].filter((v) => v !== undefined).length;
-
-    if (parentCount !== 1) {
-      throw new BadRequestException({
-        code: "DOCUMENT_REQUIRES_EXACTLY_ONE_PARENT",
-        message:
-          "A document must have exactly one parent: companyId, contactId, dealId, projectId, or invoiceId.",
-      });
-    }
-
-    if (dto.companyId) {
-      const company = await this.prisma.company.findFirst({
-        where: { id: dto.companyId, organization_id: actor.organizationId },
-        select: { id: true },
-      });
-      if (!company) {
-        throw new NotFoundException({
-          code: "PARENT_NOT_FOUND",
-          message: "Company not found in organization.",
-        });
-      }
-    } else if (dto.contactId) {
-      const contact = await this.prisma.contact.findFirst({
-        where: { id: dto.contactId, organization_id: actor.organizationId },
-        select: { id: true },
-      });
-      if (!contact) {
-        throw new NotFoundException({
-          code: "PARENT_NOT_FOUND",
-          message: "Contact not found in organization.",
-        });
-      }
-    } else if (dto.dealId) {
-      const deal = await this.prisma.deal.findFirst({
-        where: { id: dto.dealId, organization_id: actor.organizationId },
-        select: { id: true },
-      });
-      if (!deal) {
-        throw new NotFoundException({
-          code: "PARENT_NOT_FOUND",
-          message: "Deal not found in organization.",
-        });
-      }
-    } else if (dto.projectId) {
-      const project = await this.prisma.project.findFirst({
-        where: { id: dto.projectId, organization_id: actor.organizationId },
-        select: { id: true },
-      });
-      if (!project) {
-        throw new NotFoundException({
-          code: "PARENT_NOT_FOUND",
-          message: "Project not found in organization.",
-        });
-      }
-    } else if (dto.invoiceId) {
-      const invoice = await this.prisma.invoice.findFirst({
-        where: { id: dto.invoiceId, organization_id: actor.organizationId },
-        select: { id: true },
-      });
-      if (!invoice) {
-        throw new NotFoundException({
-          code: "PARENT_NOT_FOUND",
-          message: "Invoice not found in organization.",
-        });
-      }
-    }
+    this.assertExactlyOneParent(dto);
+    await this.assertParentInOrgAndAuthorized(actor, dto);
 
     this.storage.assertValidFile(dto.mimeType, dto.sizeBytes);
 
@@ -159,6 +119,7 @@ export class DocumentsService {
       ...(query.category ? { category: query.category } : {}),
       ...(query.visibility ? { visibility: query.visibility } : {}),
       ...cursorWhere(query.cursor),
+      ...this.teamMemberDocumentListScope(actor),
     };
 
     const rows = await this.prisma.document.findMany({
@@ -175,19 +136,7 @@ export class DocumentsService {
     actor: AuthenticatedUser,
     id: string
   ): Promise<PresignedDownloadResult> {
-    const doc = await this.prisma.document.findFirst({
-      where: {
-        id,
-        organization_id: actor.organizationId,
-        deleted_at: null,
-      },
-    });
-    if (!doc) {
-      throw new NotFoundException({
-        code: "DOCUMENT_NOT_FOUND",
-        message: "Document not found.",
-      });
-    }
+    const doc = await this.findAccessibleDocument(actor, id);
 
     return this.storage.generateDownloadUrl(
       doc.storage_key,
@@ -197,19 +146,7 @@ export class DocumentsService {
   }
 
   async delete(actor: AuthenticatedUser, id: string): Promise<Document> {
-    const doc = await this.prisma.document.findFirst({
-      where: {
-        id,
-        organization_id: actor.organizationId,
-        deleted_at: null,
-      },
-    });
-    if (!doc) {
-      throw new NotFoundException({
-        code: "DOCUMENT_NOT_FOUND",
-        message: "Document not found.",
-      });
-    }
+    const doc = await this.findAccessibleDocument(actor, id);
 
     const now = new Date();
     const updated = await this.prisma.document.update({
@@ -229,5 +166,171 @@ export class DocumentsService {
     });
 
     return updated;
+  }
+
+  private assertExactlyOneParent(parent: DocumentParentIds): void {
+    const parentCount = [
+      parent.companyId,
+      parent.contactId,
+      parent.dealId,
+      parent.projectId,
+      parent.invoiceId,
+    ].filter((v) => v !== undefined).length;
+
+    if (parentCount !== 1) {
+      throw new BadRequestException({
+        code: "DOCUMENT_REQUIRES_EXACTLY_ONE_PARENT",
+        message:
+          "A document must have exactly one parent: companyId, contactId, dealId, projectId, or invoiceId.",
+      });
+    }
+  }
+
+  /**
+   * Organization existence check for every role, plus TEAM_MEMBER
+   * "upload on assigned" / CRM fail-closed rules (Document 5 §4.3).
+   */
+  private async assertParentInOrgAndAuthorized(
+    actor: AuthenticatedUser,
+    parent: DocumentParentIds
+  ): Promise<void> {
+    if (parent.companyId) {
+      const company = await this.prisma.company.findFirst({
+        where: { id: parent.companyId, organization_id: actor.organizationId },
+        select: { id: true },
+      });
+      if (!company) {
+        throw new NotFoundException({
+          code: "PARENT_NOT_FOUND",
+          message: "Company not found in organization.",
+        });
+      }
+      assertTeamMemberMayViewCompanyOrContact(actor);
+      return;
+    }
+
+    if (parent.contactId) {
+      const contact = await this.prisma.contact.findFirst({
+        where: { id: parent.contactId, organization_id: actor.organizationId },
+        select: { id: true },
+      });
+      if (!contact) {
+        throw new NotFoundException({
+          code: "PARENT_NOT_FOUND",
+          message: "Contact not found in organization.",
+        });
+      }
+      assertTeamMemberMayViewCompanyOrContact(actor);
+      return;
+    }
+
+    if (parent.dealId) {
+      const deal = await this.prisma.deal.findFirst({
+        where: { id: parent.dealId, organization_id: actor.organizationId },
+        select: { id: true },
+      });
+      if (!deal) {
+        throw new NotFoundException({
+          code: "PARENT_NOT_FOUND",
+          message: "Deal not found in organization.",
+        });
+      }
+      assertCrmRoleMayAccessLeadsOrDeals(actor);
+      return;
+    }
+
+    if (parent.projectId) {
+      const project = await this.prisma.project.findFirst({
+        where: {
+          id: parent.projectId,
+          organization_id: actor.organizationId,
+        },
+        include: { tasks: { select: { assignee_id: true } } },
+      });
+      if (!project) {
+        throw new NotFoundException({
+          code: "PARENT_NOT_FOUND",
+          message: "Project not found in organization.",
+        });
+      }
+      assertTeamMemberMayAccessProject(actor, project);
+      return;
+    }
+
+    if (parent.invoiceId) {
+      const invoice = await this.prisma.invoice.findFirst({
+        where: {
+          id: parent.invoiceId,
+          organization_id: actor.organizationId,
+        },
+        select: { id: true },
+      });
+      if (!invoice) {
+        throw new NotFoundException({
+          code: "PARENT_NOT_FOUND",
+          message: "Invoice not found in organization.",
+        });
+      }
+      // TEAM_MEMBER has no finance.* — invoices are not an assigned parent.
+      if (actor.role === UserRole.TEAM_MEMBER) {
+        throw new ForbiddenException({
+          code: "FORBIDDEN_PERMISSION",
+          message: "You don't have permission to attach documents to invoices.",
+        });
+      }
+    }
+  }
+
+  /**
+   * TEAM_MEMBER may only list documents whose parent is an assigned project
+   * (Document 5 §4.3 "upload on assigned" / B4 project scope). CRM/finance
+   * parents remain fail-closed for this role, matching resource APIs.
+   */
+  private teamMemberDocumentListScope(
+    actor: AuthenticatedUser
+  ): Prisma.DocumentWhereInput {
+    if (actor.role !== UserRole.TEAM_MEMBER) {
+      return {};
+    }
+    return {
+      project_id: { not: null },
+      company_id: null,
+      contact_id: null,
+      deal_id: null,
+      invoice_id: null,
+      project: {
+        organization_id: actor.organizationId,
+        ...teamMemberProjectWhere(actor),
+      },
+    };
+  }
+
+  private async findAccessibleDocument(
+    actor: AuthenticatedUser,
+    id: string
+  ): Promise<Document> {
+    const doc = await this.prisma.document.findFirst({
+      where: {
+        id,
+        organization_id: actor.organizationId,
+        deleted_at: null,
+      },
+    });
+    if (!doc) {
+      throw new NotFoundException({
+        code: "DOCUMENT_NOT_FOUND",
+        message: "Document not found.",
+      });
+    }
+
+    await this.assertParentInOrgAndAuthorized(actor, {
+      companyId: doc.company_id ?? undefined,
+      contactId: doc.contact_id ?? undefined,
+      dealId: doc.deal_id ?? undefined,
+      projectId: doc.project_id ?? undefined,
+      invoiceId: doc.invoice_id ?? undefined,
+    });
+
+    return doc;
   }
 }

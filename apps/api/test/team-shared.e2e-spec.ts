@@ -555,6 +555,287 @@ describe("Phase B6: Team + Shared Systems (e2e)", () => {
 
       expect(res.body.error.code).toBe("DOCUMENT_NOT_FOUND");
     });
+
+    describe("TEAM_MEMBER assigned-parent authorization", () => {
+      let assignedProject: { id: string };
+      let unassignedProject: { id: string };
+      let unauthorizedCompanyDocId: string;
+      let unauthorizedProjectDocId: string;
+      let authorizedProjectDocId: string;
+
+      beforeAll(async () => {
+        assignedProject = await prisma.project.create({
+          data: {
+            organization_id: founderSession.organizationId,
+            company_id: sharedCompany.id,
+            name: `${TEAM_SHARED_TEST_PREFIX}Docs-Assigned`,
+            owner_id: founderSession.userId,
+          },
+        });
+        await prisma.task.create({
+          data: {
+            organization_id: founderSession.organizationId,
+            project_id: assignedProject.id,
+            title: `${TEAM_SHARED_TEST_PREFIX}Docs-Assign-Task`,
+            status: TaskStatus.TODO,
+            priority: TaskPriority.MEDIUM,
+            assignee_id: teamMemberSession.userId,
+          },
+        });
+        unassignedProject = await prisma.project.create({
+          data: {
+            organization_id: founderSession.organizationId,
+            company_id: sharedCompany.id,
+            name: `${TEAM_SHARED_TEST_PREFIX}Docs-Unassigned`,
+            owner_id: founderSession.userId,
+          },
+        });
+
+        const companyDoc = await prisma.document.create({
+          data: {
+            organization_id: founderSession.organizationId,
+            filename: "company-secret.pdf",
+            storage_key: `${founderSession.organizationId}/company-secret.pdf`,
+            mime_type: "application/pdf",
+            size_bytes: 1024,
+            category: DocumentCategory.INTERNAL,
+            visibility: Visibility.INTERNAL,
+            company_id: sharedCompany.id,
+            uploaded_by: founderSession.userId,
+          },
+        });
+        unauthorizedCompanyDocId = companyDoc.id;
+
+        const unassignedDoc = await prisma.document.create({
+          data: {
+            organization_id: founderSession.organizationId,
+            filename: "unassigned-project.pdf",
+            storage_key: `${founderSession.organizationId}/unassigned-project.pdf`,
+            mime_type: "application/pdf",
+            size_bytes: 1024,
+            category: DocumentCategory.INTERNAL,
+            visibility: Visibility.INTERNAL,
+            project_id: unassignedProject.id,
+            uploaded_by: founderSession.userId,
+          },
+        });
+        unauthorizedProjectDocId = unassignedDoc.id;
+
+        const assignedDoc = await prisma.document.create({
+          data: {
+            organization_id: founderSession.organizationId,
+            filename: "assigned-project.pdf",
+            storage_key: `${founderSession.organizationId}/assigned-project.pdf`,
+            mime_type: "application/pdf",
+            size_bytes: 1024,
+            category: DocumentCategory.INTERNAL,
+            visibility: Visibility.INTERNAL,
+            project_id: assignedProject.id,
+            uploaded_by: founderSession.userId,
+          },
+        });
+        authorizedProjectDocId = assignedDoc.id;
+      });
+
+      it("TEAM_MEMBER cannot presign upload against unauthorized parent (company)", async () => {
+        const res = await request(app.getHttpServer())
+          .post("/api/v1/documents/presign-upload")
+          .set(authHeaders(teamMemberSession))
+          .send({
+            filename: "leak.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 1024,
+            category: DocumentCategory.INTERNAL,
+            companyId: sharedCompany.id,
+          })
+          .expect(403);
+
+        expect(res.body.error.code).toBe("FORBIDDEN_PERMISSION");
+      });
+
+      it("TEAM_MEMBER cannot presign upload against unassigned project", async () => {
+        const res = await request(app.getHttpServer())
+          .post("/api/v1/documents/presign-upload")
+          .set(authHeaders(teamMemberSession))
+          .send({
+            filename: "leak.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 1024,
+            category: DocumentCategory.INTERNAL,
+            projectId: unassignedProject.id,
+          })
+          .expect(403);
+
+        expect(res.body.error.code).toBe("FORBIDDEN_PERMISSION");
+      });
+
+      it("TEAM_MEMBER cannot register a document against unauthorized parent", async () => {
+        const res = await request(app.getHttpServer())
+          .post("/api/v1/documents")
+          .set(authHeaders(teamMemberSession))
+          .send({
+            filename: "leak.pdf",
+            storageKey: `${founderSession.organizationId}/tm-leak.pdf`,
+            mimeType: "application/pdf",
+            sizeBytes: 1024,
+            category: DocumentCategory.INTERNAL,
+            projectId: unassignedProject.id,
+          })
+          .expect(403);
+
+        expect(res.body.error.code).toBe("FORBIDDEN_PERMISSION");
+      });
+
+      it("TEAM_MEMBER cannot list unauthorized parent documents", async () => {
+        const byCompany = await request(app.getHttpServer())
+          .get(`/api/v1/documents?companyId=${sharedCompany.id}`)
+          .set(authHeaders(teamMemberSession))
+          .expect(200);
+        expect(listData(byCompany.body).some((d) => d.id === unauthorizedCompanyDocId)).toBe(
+          false
+        );
+
+        const byUnassigned = await request(app.getHttpServer())
+          .get(`/api/v1/documents?projectId=${unassignedProject.id}`)
+          .set(authHeaders(teamMemberSession))
+          .expect(200);
+        expect(
+          listData(byUnassigned.body).some((d) => d.id === unauthorizedProjectDocId)
+        ).toBe(false);
+      });
+
+      it("TEAM_MEMBER cannot obtain download URL for unauthorized document", async () => {
+        await request(app.getHttpServer())
+          .get(`/api/v1/documents/${unauthorizedProjectDocId}/download-url`)
+          .set(authHeaders(teamMemberSession))
+          .expect(403);
+
+        await request(app.getHttpServer())
+          .get(`/api/v1/documents/${unauthorizedCompanyDocId}/download-url`)
+          .set(authHeaders(teamMemberSession))
+          .expect(403);
+      });
+
+      it("TEAM_MEMBER cannot delete unauthorized document", async () => {
+        await request(app.getHttpServer())
+          .post(`/api/v1/documents/${unauthorizedProjectDocId}/delete`)
+          .set(authHeaders(teamMemberSession))
+          .expect(403);
+      });
+
+      it("TEAM_MEMBER authorized assigned-parent document operations still work", async () => {
+        const presign = await request(app.getHttpServer())
+          .post("/api/v1/documents/presign-upload")
+          .set(authHeaders(teamMemberSession))
+          .send({
+            filename: "assigned-upload.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 2048,
+            category: DocumentCategory.INTERNAL,
+            projectId: assignedProject.id,
+          })
+          .expect(201);
+
+        expect(presign.body.storageKey).toContain(teamMemberSession.organizationId);
+
+        const created = await request(app.getHttpServer())
+          .post("/api/v1/documents")
+          .set(authHeaders(teamMemberSession))
+          .send({
+            filename: "assigned-upload.pdf",
+            storageKey: presign.body.storageKey,
+            mimeType: "application/pdf",
+            sizeBytes: 2048,
+            category: DocumentCategory.INTERNAL,
+            projectId: assignedProject.id,
+          })
+          .expect(201);
+
+        expect(created.body.projectId).toBe(assignedProject.id);
+
+        const listed = await request(app.getHttpServer())
+          .get(`/api/v1/documents?projectId=${assignedProject.id}`)
+          .set(authHeaders(teamMemberSession))
+          .expect(200);
+        const docs = listData<any>(listed.body);
+        expect(docs.some((d) => d.id === authorizedProjectDocId)).toBe(true);
+        expect(docs.some((d) => d.id === created.body.id)).toBe(true);
+
+        await request(app.getHttpServer())
+          .get(`/api/v1/documents/${authorizedProjectDocId}/download-url`)
+          .set(authHeaders(teamMemberSession))
+          .expect(200);
+
+        const deleted = await request(app.getHttpServer())
+          .post(`/api/v1/documents/${created.body.id}/delete`)
+          .set(authHeaders(teamMemberSession))
+          .expect(201);
+        expect(deleted.body.deletedAt).not.toBeNull();
+      });
+
+      it("cross-org document access remains blocked for TEAM_MEMBER", async () => {
+        const otherOwner = await prisma.user.create({
+          data: {
+            organization_id: secondOrg.id,
+            email: `${TEAM_SHARED_TEST_PREFIX}other-owner-${Date.now()}@forge.local`,
+            name: "Other Org Owner",
+            role: UserRole.FOUNDER_ADMIN,
+            password_hash: "$2b$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUV",
+            active: true,
+          },
+        });
+        const otherCompany = await prisma.company.create({
+          data: {
+            organization_id: secondOrg.id,
+            name: `${TEAM_SHARED_TEST_PREFIX}Other-Org-Co`,
+          },
+        });
+        const otherOrgProject = await prisma.project.create({
+          data: {
+            organization_id: secondOrg.id,
+            company_id: otherCompany.id,
+            name: `${TEAM_SHARED_TEST_PREFIX}Other-Org-Project`,
+            owner_id: otherOwner.id,
+          },
+        });
+        const otherDoc = await prisma.document.create({
+          data: {
+            organization_id: secondOrg.id,
+            filename: "other-org.pdf",
+            storage_key: `${secondOrg.id}/other-org.pdf`,
+            mime_type: "application/pdf",
+            size_bytes: 512,
+            category: DocumentCategory.INTERNAL,
+            visibility: Visibility.INTERNAL,
+            project_id: otherOrgProject.id,
+            uploaded_by: otherOwner.id,
+          },
+        });
+
+        await request(app.getHttpServer())
+          .post("/api/v1/documents/presign-upload")
+          .set(authHeaders(teamMemberSession))
+          .send({
+            filename: "x.pdf",
+            mimeType: "application/pdf",
+            sizeBytes: 512,
+            category: DocumentCategory.INTERNAL,
+            projectId: otherOrgProject.id,
+          })
+          .expect(404);
+
+        await request(app.getHttpServer())
+          .get(`/api/v1/documents/${otherDoc.id}/download-url`)
+          .set(authHeaders(teamMemberSession))
+          .expect(404);
+
+        const listed = await request(app.getHttpServer())
+          .get("/api/v1/documents")
+          .set(authHeaders(teamMemberSession))
+          .expect(200);
+        expect(listData(listed.body).some((d) => d.id === otherDoc.id)).toBe(false);
+      });
+    });
   });
 
   describe("5. Shared Notifications (/notifications)", () => {
@@ -681,6 +962,110 @@ describe("Phase B6: Team + Shared Systems (e2e)", () => {
         .expect(200);
 
       expect(res.body.hits).toHaveLength(0);
+    });
+
+    it("TEAM_MEMBER cannot search org-wide CRM records (companies/contacts/deals fail-closed)", async () => {
+      const crmCompany = await prisma.company.create({
+        data: {
+          organization_id: founderSession.organizationId,
+          name: `${TEAM_SHARED_TEST_PREFIX}Hidden-CRM-Co`,
+        },
+      });
+      const crmContact = await prisma.contact.create({
+        data: {
+          organization_id: founderSession.organizationId,
+          company_id: crmCompany.id,
+          name: `${TEAM_SHARED_TEST_PREFIX}Hidden-Contact`,
+          email: `${TEAM_SHARED_TEST_PREFIX}hidden-contact@example.com`,
+        },
+      });
+      const crmDeal = await prisma.deal.create({
+        data: {
+          organization_id: founderSession.organizationId,
+          company_id: crmCompany.id,
+          title: `${TEAM_SHARED_TEST_PREFIX}Hidden-Deal`,
+          owner_id: founderSession.userId,
+          stage: "QUALIFIED",
+          estimated_value: "10000.00",
+        },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/search?q=${encodeURIComponent(TEAM_SHARED_TEST_PREFIX + "Hidden")}`)
+        .set(authHeaders(teamMemberSession))
+        .expect(200);
+
+      const hits = res.body.hits as Array<{ id: string; type: string }>;
+      expect(hits.some((h) => h.id === crmCompany.id && h.type === "company")).toBe(false);
+      expect(hits.some((h) => h.id === crmContact.id && h.type === "contact")).toBe(false);
+      expect(hits.some((h) => h.id === crmDeal.id && h.type === "deal")).toBe(false);
+    });
+
+    it("TEAM_MEMBER only sees assigned projects/tasks in search; unassigned are excluded", async () => {
+      const assignedCompany = await prisma.company.create({
+        data: {
+          organization_id: founderSession.organizationId,
+          name: `${TEAM_SHARED_TEST_PREFIX}Search-Assign-Co`,
+        },
+      });
+      const assignedProject = await prisma.project.create({
+        data: {
+          organization_id: founderSession.organizationId,
+          company_id: assignedCompany.id,
+          name: `${TEAM_SHARED_TEST_PREFIX}Assigned-Beacon-Project`,
+          owner_id: founderSession.userId,
+        },
+      });
+      const unassignedProject = await prisma.project.create({
+        data: {
+          organization_id: founderSession.organizationId,
+          company_id: assignedCompany.id,
+          name: `${TEAM_SHARED_TEST_PREFIX}Unassigned-Beacon-Project`,
+          owner_id: founderSession.userId,
+        },
+      });
+      const assignedTask = await prisma.task.create({
+        data: {
+          organization_id: founderSession.organizationId,
+          project_id: assignedProject.id,
+          title: `${TEAM_SHARED_TEST_PREFIX}Assigned-Beacon-Task`,
+          status: TaskStatus.TODO,
+          priority: TaskPriority.MEDIUM,
+          assignee_id: teamMemberSession.userId,
+        },
+      });
+      const foreignTask = await prisma.task.create({
+        data: {
+          organization_id: founderSession.organizationId,
+          project_id: unassignedProject.id,
+          title: `${TEAM_SHARED_TEST_PREFIX}Foreign-Beacon-Task`,
+          status: TaskStatus.TODO,
+          priority: TaskPriority.MEDIUM,
+          assignee_id: founderSession.userId,
+        },
+      });
+
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/search?q=${encodeURIComponent("Beacon")}`)
+        .set(authHeaders(teamMemberSession))
+        .expect(200);
+
+      const hits = res.body.hits as Array<{ id: string; type: string }>;
+      expect(hits.some((h) => h.id === assignedProject.id && h.type === "project")).toBe(true);
+      expect(hits.some((h) => h.id === assignedTask.id && h.type === "task")).toBe(true);
+      expect(hits.some((h) => h.id === unassignedProject.id && h.type === "project")).toBe(false);
+      expect(hits.some((h) => h.id === foreignTask.id && h.type === "task")).toBe(false);
+    });
+
+    it("OPERATIONS retains org-wide project search visibility", async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/search?q=${encodeURIComponent(TEAM_SHARED_TEST_PREFIX + "Starlight")}`)
+        .set(authHeaders(opsSession))
+        .expect(200);
+
+      const hits = res.body.hits as Array<{ id: string; type: string }>;
+      expect(hits.some((h) => h.id === searchProject.id && h.type === "project")).toBe(true);
+      expect(hits.some((h) => h.id === searchCompany.id && h.type === "company")).toBe(true);
     });
   });
 
