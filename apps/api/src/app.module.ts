@@ -13,6 +13,7 @@ import { JwtAuthGuard } from "./modules/auth/guards/jwt-auth.guard";
 import { PermissionsGuard } from "./modules/auth/guards/permissions.guard";
 import { SharedModule } from "./modules/shared/shared.module";
 import { CrmModule } from "./modules/crm/crm.module";
+import { SalesModule } from "./modules/sales/sales.module";
 
 @Module({
   imports: [
@@ -45,8 +46,9 @@ import { CrmModule } from "./modules/crm/crm.module";
     HealthModule,
     AuthModule,
     CrmModule,
-    // Remaining domain modules (sales, projects, finance, team, portal)
-    // are added here starting in a later phase — see src/modules/README.md.
+    SalesModule,
+    // Remaining domain modules (projects, finance, team, portal) are
+    // added here starting in a later phase — see src/modules/README.md.
   ],
   providers: [
     // Global guard chain, explicit order (Step 8/9/12):

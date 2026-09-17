@@ -16,3 +16,18 @@ export function IsMoneyString(): PropertyDecorator {
     })
   );
 }
+
+/**
+ * `ProposalLineItem.quantity` is `Decimal(10, 2)` — a narrower precision
+ * than the `Decimal(12,2)` money fields (8 integer digits, not 10) — so it
+ * gets its own regex rather than reusing `MONEY_REGEX`.
+ */
+export const QUANTITY_REGEX = /^\d{1,8}\.\d{2}$/;
+
+export function IsQuantityString(): PropertyDecorator {
+  return applyDecorators(
+    Matches(QUANTITY_REGEX, {
+      message: "must be a decimal string with exactly two decimal places, e.g. \"1.00\"",
+    })
+  );
+}

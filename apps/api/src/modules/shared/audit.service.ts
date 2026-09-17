@@ -91,6 +91,11 @@ export const AUDIT_ACTIONS = {
   DEAL_TRANSITIONED: "deal.transitioned",
   DEAL_REOPENED: "deal.reopened",
   DEAL_BULK_REASSIGNED: "deal.bulk_reassigned",
+  // B3 Sales/Proposals (Document 5 §12.3 "Audit all transitions (A)"; §19's
+  // per-route Audit column for send/revise/transition).
+  PROPOSAL_SENT: "proposal.sent",
+  PROPOSAL_TRANSITIONED: "proposal.transitioned",
+  PROPOSAL_REVISED: "proposal.revised",
 } as const;
 
 /**
