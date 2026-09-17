@@ -89,7 +89,12 @@ export const ROLE_PERMISSIONS: Record<UserRole, ReadonlySet<Permission> | "*"> =
     "documents.manage",
     "portal.manage",
   ]),
-  TEAM_MEMBER: new Set<Permission>(["crm.read", "projects.read", "documents.manage"]),
+  TEAM_MEMBER: new Set<Permission>([
+    "crm.read",
+    "projects.read",
+    "documents.manage",
+    "team.workload.read",
+  ]),
 };
 
 /** True if `role` grants `permission`, honoring the FOUNDER_ADMIN wildcard. */

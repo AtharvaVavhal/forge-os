@@ -118,6 +118,9 @@ export const AUDIT_ACTIONS = {
   CREDIT_NOTE_ISSUED: "credit_note.issued",
   FORGE_FUND_ENTRY_CREATED: "forge_fund_entry.created",
   FORGE_FUND_CONTRIBUTION_WEBHOOK: "forge_fund_entry.contribution_webhook",
+  // B6 Team + Shared Systems (Document 5 §19; Document 6 §17 Tier A & B)
+  DOCUMENT_DELETED: "document.deleted",
+  NOTE_VISIBILITY_CHANGED: "note.visibility_changed",
 } as const;
 
 /**

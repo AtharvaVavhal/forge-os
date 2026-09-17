@@ -17,6 +17,7 @@ import { CrmModule } from "./modules/crm/crm.module";
 import { SalesModule } from "./modules/sales/sales.module";
 import { ProjectsModule } from "./modules/projects/projects.module";
 import { FinanceModule } from "./modules/finance/finance.module";
+import { TeamModule } from "./modules/team/team.module";
 
 @Module({
   imports: [
@@ -52,7 +53,8 @@ import { FinanceModule } from "./modules/finance/finance.module";
     SalesModule,
     ProjectsModule,
     FinanceModule,
-    // Remaining domain modules (team, portal) are added here starting in
+    TeamModule,
+    // Remaining domain modules (portal) are added here starting in
     // a later phase — see src/modules/README.md.
   ],
   providers: [
