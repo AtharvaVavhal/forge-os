@@ -1,8 +1,16 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from "@nestjs/common";
-import { DealStage, ProposalStatus, type Deal, type Prisma } from "@prisma/client";
+import {
+  DealStage,
+  ProjectPhase,
+  ProjectStatus,
+  ProposalStatus,
+  type Deal,
+  type Prisma,
+} from "@prisma/client";
 import { PrismaService } from "../../../database/prisma.service";
 import { buildOffsetMeta, offsetSkipTake, type ListEnvelope } from "../../../common/pagination/offset-pagination";
 import { AuditService, AUDIT_ACTIONS } from "../../shared/audit.service";
+import { DOMAIN_EVENT_TYPES } from "../../outbox/domain-event.constants";
 import type { AuthenticatedUser } from "../../auth/types/authenticated-request.interface";
 import type {
   BulkReassignDealsDto,
@@ -144,6 +152,7 @@ export class DealsService {
       const acceptedProposal = await this.prisma.proposal.findFirst({
         where: { deal_id: deal.id, status: ProposalStatus.ACCEPTED },
         select: { id: true },
+        orderBy: { version: "desc" },
       });
       if (!acceptedProposal) {
         throw new UnprocessableEntityException({
@@ -152,7 +161,7 @@ export class DealsService {
           details: { dealId: deal.id },
         });
       }
-      return this.applyTransition(actor, deal, DealStage.WON, {});
+      return this.applyWonTransition(actor, deal, acceptedProposal.id);
     }
 
     const next = nextLinearStage(deal.stage);
@@ -166,17 +175,156 @@ export class DealsService {
     return this.applyTransition(actor, deal, next, {});
   }
 
+  /**
+   * Document 5 §13 / Red Team §3 — single DB transaction:
+   * Deal stage → WON + Project create + DomainEvent(DealWon).
+   * Idempotent on retry: one Project per deal; one DealWon event per deal.
+   */
+  private async applyWonTransition(
+    actor: AuthenticatedUser,
+    deal: Deal,
+    acceptedProposalId: string
+  ): Promise<Deal> {
+    if (!deal.company_id) {
+      throw new UnprocessableEntityException({
+        code: "DEAL_COMPANY_REQUIRED",
+        message: "Deal must have a company before it can be marked WON (required for Project).",
+        details: { dealId: deal.id },
+      });
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const stageUpdate = await tx.deal.updateMany({
+        where: {
+          id: deal.id,
+          organization_id: actor.organizationId,
+          stage: { notIn: [DealStage.WON, DealStage.LOST] },
+        },
+        data: { stage: DealStage.WON },
+      });
+
+      if (stageUpdate.count !== 1) {
+        const current = await tx.deal.findFirst({
+          where: { id: deal.id, organization_id: actor.organizationId },
+        });
+        if (current?.stage === DealStage.WON) {
+          // Concurrent/retry: already WON — ensure Project + event exist, return deal.
+          const project =
+            (await tx.project.findFirst({
+              where: { deal_id: deal.id, organization_id: actor.organizationId },
+            })) ??
+            (await tx.project.create({
+              data: {
+                organization_id: actor.organizationId,
+                name: deal.title,
+                company_id: deal.company_id!,
+                deal_id: deal.id,
+                accepted_proposal_id: acceptedProposalId,
+                owner_id: deal.owner_id,
+                status: ProjectStatus.ACTIVE,
+                phase: ProjectPhase.PLANNING,
+              },
+            }));
+          const existingEvent = await tx.domainEvent.findFirst({
+            where: {
+              organization_id: actor.organizationId,
+              type: DOMAIN_EVENT_TYPES.DEAL_WON,
+              aggregate_id: deal.id,
+            },
+          });
+          if (!existingEvent) {
+            await tx.domainEvent.create({
+              data: {
+                organization_id: actor.organizationId,
+                type: DOMAIN_EVENT_TYPES.DEAL_WON,
+                aggregate_type: "Deal",
+                aggregate_id: deal.id,
+                payload: {
+                  dealId: deal.id,
+                  projectId: project.id,
+                  acceptedProposalId,
+                  companyId: deal.company_id,
+                  ownerId: deal.owner_id,
+                },
+              },
+            });
+          }
+          return tx.deal.findFirstOrThrow({ where: { id: deal.id } });
+        }
+        throw new ConflictException({
+          code: "DEAL_INVALID_TRANSITION",
+          message: `Cannot transition a deal from ${current?.stage ?? "unknown"} to WON.`,
+          details: { from: current?.stage, to: DealStage.WON },
+        });
+      }
+
+      let project = await tx.project.findFirst({
+        where: { deal_id: deal.id, organization_id: actor.organizationId },
+      });
+      if (!project) {
+        project = await tx.project.create({
+          data: {
+            organization_id: actor.organizationId,
+            name: deal.title,
+            company_id: deal.company_id!,
+            deal_id: deal.id,
+            accepted_proposal_id: acceptedProposalId,
+            owner_id: deal.owner_id,
+            status: ProjectStatus.ACTIVE,
+            phase: ProjectPhase.PLANNING,
+          },
+        });
+      }
+
+      const existingEvent = await tx.domainEvent.findFirst({
+        where: {
+          organization_id: actor.organizationId,
+          type: DOMAIN_EVENT_TYPES.DEAL_WON,
+          aggregate_id: deal.id,
+        },
+      });
+      if (!existingEvent) {
+        await tx.domainEvent.create({
+          data: {
+            organization_id: actor.organizationId,
+            type: DOMAIN_EVENT_TYPES.DEAL_WON,
+            aggregate_type: "Deal",
+            aggregate_id: deal.id,
+            payload: {
+              dealId: deal.id,
+              projectId: project.id,
+              acceptedProposalId,
+              companyId: deal.company_id,
+              ownerId: deal.owner_id,
+            },
+          },
+        });
+      }
+
+      return tx.deal.findFirstOrThrow({ where: { id: deal.id } });
+    });
+
+    await this.audit.record({
+      organizationId: actor.organizationId,
+      actorType: "USER",
+      actorId: actor.id,
+      action: AUDIT_ACTIONS.DEAL_TRANSITIONED,
+      entityType: "Deal",
+      entityId: deal.id,
+      before: { stage: deal.stage },
+      after: { stage: DealStage.WON },
+    });
+
+    return result;
+  }
+
   private async applyTransition(
     actor: AuthenticatedUser,
     deal: Deal,
     to: DealStage,
     extra: Prisma.DealUpdateInput
   ): Promise<Deal> {
-    // Deal Won's downstream Project + DomainEvent(DealWon) side effects
-    // (Document 5 §13) are explicitly out of scope for B2 (Project
-    // creation is B4; DomainEvent/outbox is deferred) — this performs
-    // only the stage transition + audit, per the task's instruction not
-    // to duplicate future-phase logic.
+    // Non-WON transitions: stage + audit only (WON uses applyWonTransition).
     const updated = await this.prisma.deal.update({
       where: { id: deal.id },
       data: { stage: to, ...extra },

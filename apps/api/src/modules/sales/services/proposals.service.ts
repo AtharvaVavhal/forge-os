@@ -130,15 +130,43 @@ export class ProposalsService {
     return this.get(actor, proposal.id);
   }
 
-  /** `POST /proposals/:id/send` — DRAFT -> SENT only. Document 5 §19: Tier A audit. */
+  /** `POST /proposals/:id/send` — DRAFT -> SENT only. Document 5 §19: Tier A audit.
+   * Document 5 §13/§14: DomainEvent ProposalSent in the same write boundary. */
   async send(actor: AuthenticatedUser, id: string): Promise<Proposal> {
     const proposal = await this.get(actor, id);
     this.assertDraft(proposal);
 
-    const updated = await this.prisma.proposal.update({
-      where: { id: proposal.id },
-      data: { status: ProposalStatus.SENT, sent_at: new Date() },
-      include: DETAIL_INCLUDE,
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const sent = await tx.proposal.update({
+        where: { id: proposal.id },
+        data: { status: ProposalStatus.SENT, sent_at: new Date() },
+        include: DETAIL_INCLUDE,
+      });
+
+      const existingEvent = await tx.domainEvent.findFirst({
+        where: {
+          organization_id: actor.organizationId,
+          type: "ProposalSent",
+          aggregate_id: proposal.id,
+        },
+      });
+      if (!existingEvent) {
+        await tx.domainEvent.create({
+          data: {
+            organization_id: actor.organizationId,
+            type: "ProposalSent",
+            aggregate_type: "Proposal",
+            aggregate_id: proposal.id,
+            payload: {
+              proposalId: proposal.id,
+              version: sent.version,
+              dealId: sent.deal_id,
+            },
+          },
+        });
+      }
+
+      return sent;
     });
 
     await this.audit.record({

@@ -95,10 +95,55 @@ export async function cleanupTestFixtures(app: INestApplication): Promise<void> 
     await prisma.note.deleteMany({ where: { created_by: { in: testUserIds } } });
     await prisma.document.deleteMany({ where: { uploaded_by: { in: testUserIds } } });
     await prisma.activity.deleteMany({ where: { created_by: { in: testUserIds } } });
+
+    // B8 Deal→WON creates projects owned by test users; clear owner/restrict
+    // chains before deleting users so afterAll cannot leave orphan deals.
+    const ownedProjects = await prisma.project.findMany({
+      where: { owner_id: { in: testUserIds } },
+      select: { id: true },
+    });
+    const projectIds = ownedProjects.map((p) => p.id);
+    if (projectIds.length > 0) {
+      await prisma.supportTicket.deleteMany({ where: { project_id: { in: projectIds } } });
+      await prisma.invoiceLineItem.deleteMany({
+        where: { invoice: { project_id: { in: projectIds } } },
+      });
+      await prisma.payment.deleteMany({
+        where: { invoice: { project_id: { in: projectIds } } },
+      });
+      await prisma.invoice.deleteMany({ where: { project_id: { in: projectIds } } });
+      await prisma.task.deleteMany({ where: { project_id: { in: projectIds } } });
+      await prisma.milestone.deleteMany({ where: { project_id: { in: projectIds } } });
+      await prisma.project.deleteMany({ where: { id: { in: projectIds } } });
+    }
+
+    const ownedDeals = await prisma.deal.findMany({
+      where: { owner_id: { in: testUserIds } },
+      select: { id: true },
+    });
+    const dealIds = ownedDeals.map((d) => d.id);
+    if (dealIds.length > 0) {
+      await prisma.domainEvent.deleteMany({ where: { aggregate_id: { in: dealIds } } });
+      await prisma.proposalLineItem.deleteMany({
+        where: { proposal: { deal_id: { in: dealIds } } },
+      });
+      await prisma.proposal.deleteMany({ where: { deal_id: { in: dealIds } } });
+      await prisma.lead.updateMany({
+        where: { converted_to_deal_id: { in: dealIds } },
+        data: { converted_to_deal_id: null },
+      });
+      await prisma.deal.deleteMany({ where: { id: { in: dealIds } } });
+    }
   }
 
   await prisma.user.deleteMany({ where: { email: { startsWith: TEST_EMAIL_PREFIX } } });
-  await prisma.organization.deleteMany({
-    where: { name: { startsWith: "Phase 1 E2E Second Org" } },
-  });
+  // Second-org rows may still be referenced by append-only audit_logs; skip
+  // org delete when FK RESTRICT blocks (expected under concurrent e2e).
+  try {
+    await prisma.organization.deleteMany({
+      where: { name: { startsWith: "Phase 1 E2E Second Org" } },
+    });
+  } catch {
+    /* audit_logs RESTRICT — leave orphan second orgs */
+  }
 }

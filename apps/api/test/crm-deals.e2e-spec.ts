@@ -6,12 +6,14 @@ import {
   authHeaders,
   cleanupCrmFixtures,
   createAcceptedProposal,
+  createTestCompany,
   createTestDeal,
   loginSession,
   CRM_TEST_PREFIX,
   type AuthSession,
   listData,
 } from "./support/crm";
+import { PrismaService } from "../src/database/prisma.service";
 
 describe("CRM — Deals (e2e)", () => {
   let app: INestApplication;
@@ -123,7 +125,11 @@ describe("CRM — Deals (e2e)", () => {
   });
 
   it("WON succeeds once an accepted proposal exists for the deal", async () => {
-    const deal = await createTestDeal(app, sales.organizationId, sales.userId, { stage: "NEGOTIATION" });
+    const company = await createTestCompany(app, sales.organizationId);
+    const deal = await createTestDeal(app, sales.organizationId, sales.userId, {
+      stage: "NEGOTIATION",
+      companyId: company.id,
+    });
     await createAcceptedProposal(app, sales.organizationId, deal.id, sales.userId);
 
     const response = await request(app.getHttpServer())
@@ -132,6 +138,19 @@ describe("CRM — Deals (e2e)", () => {
       .send({ to: "WON" });
     expect(response.status).toBe(200);
     expect(response.body.stage).toBe("WON");
+
+    const prisma = app.get(PrismaService);
+    const project = await prisma.project.findFirst({
+      where: { deal_id: deal.id, organization_id: sales.organizationId },
+    });
+    expect(project).toBeTruthy();
+    expect(project?.accepted_proposal_id).toBeTruthy();
+    expect(project?.phase).toBe("PLANNING");
+
+    const event = await prisma.domainEvent.findFirst({
+      where: { type: "DealWon", aggregate_id: deal.id },
+    });
+    expect(event).toBeTruthy();
   });
 
   it("WON/LOST are terminal — no further transition is accepted", async () => {

@@ -227,6 +227,128 @@ export class InvoicesService {
     return this.get(actor, invoice.id);
   }
 
+  /**
+   * B8 DealWon consumer — create a DRAFT invoice from the accepted proposal
+   * (Document 5 §13). Idempotent: if a DRAFT already exists for this project
+   * linked to the same company, skip. Does not require an AuthenticatedUser
+   * (system/outbox path).
+   */
+  async createDraftFromAcceptedProposalForDealWon(params: {
+    organizationId: string;
+    proposalId: string;
+    projectId: string;
+    companyId: string;
+  }): Promise<Invoice | null> {
+    const existing = await this.prisma.invoice.findFirst({
+      where: {
+        organization_id: params.organizationId,
+        project_id: params.projectId,
+        company_id: params.companyId,
+        status: InvoiceStatus.DRAFT,
+      },
+    });
+    if (existing) {
+      return existing;
+    }
+
+    const proposal = await this.prisma.proposal.findFirst({
+      where: { id: params.proposalId, organization_id: params.organizationId },
+      include: { line_items: { include: { tax_rate: true }, orderBy: { sort_order: "asc" } }, deal: true },
+    });
+    if (!proposal || proposal.status !== ProposalStatus.ACCEPTED) {
+      throw new ConflictException({
+        code: "PROPOSAL_NOT_ACCEPTED",
+        message: "Only an accepted proposal can be converted to an invoice.",
+      });
+    }
+    if (proposal.deal.company_id !== params.companyId) {
+      throw new UnprocessableEntityException({
+        code: "DEAL_COMPANY_MISMATCH",
+        message: "Accepted proposal company does not match DealWon payload.",
+      });
+    }
+
+    const missingTaxRate = proposal.line_items.find((line) => !line.tax_rate);
+    if (missingTaxRate) {
+      throw new UnprocessableEntityException({
+        code: "PROPOSAL_LINE_ITEM_MISSING_TAX_RATE",
+        message: "Every proposal line item must reference a tax rate before it can become an invoice.",
+        details: { lineItemId: missingTaxRate.id },
+      });
+    }
+
+    const company = await assertCompanyInOrg(this.prisma, params.companyId, params.organizationId);
+    const organization = await this.prisma.organization.findUniqueOrThrow({
+      where: { id: params.organizationId },
+      select: { billing_state: true },
+    });
+    if (!company.billing_state) {
+      throw new UnprocessableEntityException({
+        code: "COMPANY_BILLING_STATE_REQUIRED",
+        message: "This company has no billing state set — required to determine CGST/SGST vs IGST.",
+      });
+    }
+    await assertProjectInOrg(this.prisma, params.projectId, params.organizationId);
+
+    const taxTreatment = computeTaxTreatment(organization.billing_state, company.billing_state);
+    const lineInputs = proposal.line_items.map((line) => {
+      const rate = line.tax_rate!;
+      const snapshotted = snapshotRatesForTreatment(taxTreatment, rate);
+      const lineTotal = computeLineTotal(
+        line.quantity,
+        line.unit_price,
+        snapshotted.cgst_rate,
+        snapshotted.sgst_rate,
+        snapshotted.igst_rate
+      );
+      return {
+        description: line.description,
+        hsn_sac_code: rate.hsn_sac_code,
+        quantity: line.quantity,
+        unit_price: line.unit_price,
+        cgst_rate: snapshotted.cgst_rate,
+        sgst_rate: snapshotted.sgst_rate,
+        igst_rate: snapshotted.igst_rate,
+        line_total: lineTotal,
+        sort_order: line.sort_order,
+      };
+    });
+    const amount = sumLineTotals(lineInputs.map((l) => l.line_total));
+
+    return this.prisma.$transaction(async (tx) => {
+      // Re-check inside txn for concurrent consumers.
+      const raced = await tx.invoice.findFirst({
+        where: {
+          organization_id: params.organizationId,
+          project_id: params.projectId,
+          status: InvoiceStatus.DRAFT,
+        },
+      });
+      if (raced) return raced;
+
+      const created = await tx.invoice.create({
+        data: {
+          organization_id: params.organizationId,
+          company_id: company.id,
+          project_id: params.projectId,
+          status: InvoiceStatus.DRAFT,
+          tax_treatment: taxTreatment,
+          ...draftInvoicePlaceholder(),
+          bill_to_snapshot: {},
+          amount,
+        },
+      });
+      await tx.invoiceLineItem.createMany({
+        data: lineInputs.map((line) => ({
+          ...line,
+          organization_id: params.organizationId,
+          invoice_id: created.id,
+        })),
+      });
+      return created;
+    });
+  }
+
   /** `PATCH /invoices/:id` — DRAFT only; `version` optimistic lock (Document 5 §8.1). */
   async update(actor: AuthenticatedUser, id: string, dto: UpdateInvoiceDto): Promise<Invoice> {
     const invoice = await this.get(actor, id);

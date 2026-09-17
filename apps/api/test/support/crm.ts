@@ -118,7 +118,7 @@ export async function createTestDeal(
   app: INestApplication,
   organizationId: string,
   ownerId: string,
-  overrides?: Partial<{ title: string; stage: string; estimatedValue: string }>
+  overrides?: Partial<{ title: string; stage: string; estimatedValue: string; companyId: string }>
 ) {
   const prisma = app.get(PrismaService);
   return prisma.deal.create({
@@ -127,6 +127,7 @@ export async function createTestDeal(
       title: overrides?.title ?? `${CRM_TEST_PREFIX}deal-${Date.now()}`,
       estimated_value: overrides?.estimatedValue ?? "10000.00",
       owner_id: ownerId,
+      ...(overrides?.companyId ? { company_id: overrides.companyId } : {}),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- test-only stage override for terminal-state fixtures
       ...(overrides?.stage ? { stage: overrides.stage as any } : {}),
     },
@@ -156,7 +157,46 @@ export async function createAcceptedProposal(
 export async function cleanupCrmFixtures(app: INestApplication): Promise<void> {
   const prisma = app.get(PrismaService);
 
+  const crmCompanies = await prisma.company.findMany({
+    where: { name: { startsWith: CRM_TEST_PREFIX } },
+    select: { id: true },
+  });
+  const companyIds = crmCompanies.map((c) => c.id);
+  if (companyIds.length > 0) {
+    const projects = await prisma.project.findMany({
+      where: { company_id: { in: companyIds } },
+      select: { id: true },
+    });
+    const projectIds = projects.map((p) => p.id);
+    if (projectIds.length > 0) {
+      await prisma.supportTicket.deleteMany({ where: { project_id: { in: projectIds } } });
+      await prisma.invoiceLineItem.deleteMany({
+        where: { invoice: { project_id: { in: projectIds } } },
+      });
+      await prisma.payment.deleteMany({
+        where: { invoice: { project_id: { in: projectIds } } },
+      });
+      await prisma.invoice.deleteMany({ where: { project_id: { in: projectIds } } });
+      await prisma.task.deleteMany({ where: { project_id: { in: projectIds } } });
+      await prisma.milestone.deleteMany({ where: { project_id: { in: projectIds } } });
+      await prisma.project.deleteMany({ where: { id: { in: projectIds } } });
+    }
+  }
+
   await prisma.activity.deleteMany({ where: { summary: { startsWith: CRM_TEST_PREFIX } } });
+  const crmDeals = await prisma.deal.findMany({
+    where: { title: { startsWith: CRM_TEST_PREFIX } },
+    select: { id: true },
+  });
+  const dealIds = crmDeals.map((d) => d.id);
+  if (dealIds.length > 0) {
+    await prisma.domainEvent.deleteMany({
+      where: { aggregate_id: { in: dealIds } },
+    });
+  }
+  await prisma.proposalLineItem.deleteMany({
+    where: { proposal: { deal: { title: { startsWith: CRM_TEST_PREFIX } } } },
+  });
   await prisma.proposal.deleteMany({
     where: { deal: { title: { startsWith: CRM_TEST_PREFIX } } },
   });

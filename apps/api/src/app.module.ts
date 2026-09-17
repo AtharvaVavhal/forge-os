@@ -20,6 +20,7 @@ import { FinanceModule } from "./modules/finance/finance.module";
 import { TeamModule } from "./modules/team/team.module";
 import { PortalModule } from "./modules/portal/portal.module";
 import { PortalAuthGuard } from "./modules/portal/guards/portal-auth.guard";
+import { OutboxModule } from "./modules/outbox/outbox.module";
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { PortalAuthGuard } from "./modules/portal/guards/portal-auth.guard";
     FinanceModule,
     TeamModule,
     PortalModule,
+    OutboxModule,
   ],
   providers: [
     // Global guard chain, explicit order (Step 8/9/12 + B7 portal plane):
