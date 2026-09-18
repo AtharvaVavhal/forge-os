@@ -160,6 +160,20 @@ export class StorageService {
       });
       const uploadUrl = await getSignedUrl(client, command, {
         expiresIn: PRESIGNED_URL_TTL_SECONDS,
+        // ContentLength above puts a `content-length` header on the request
+        // the presigner signs, so by default it lands in the URL's
+        // X-Amz-SignedHeaders — requiring the eventual PUT to carry a
+        // `content-length` header with an exactly matching value. A
+        // browser's `fetch`/XHR can never supply that explicitly (it's a
+        // forbidden header name per the Fetch spec: the UA sets it from the
+        // body's byte length, outside the page's control), and in practice
+        // R2 rejects the resulting request with a 403 the browser reports as
+        // a CORS failure (no Access-Control-Allow-Origin), the same failure
+        // shape as the checksum-signing bug this mirrors. Exclude it from
+        // the signature so SignedHeaders is just `host` — the declared size
+        // is still enforced via assertValidFile() before signing and via
+        // HeadObject in assertObjectMatchesRegistration() after upload.
+        unsignableHeaders: new Set(["content-length"]),
       });
 
       return {

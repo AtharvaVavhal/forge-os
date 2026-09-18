@@ -159,6 +159,20 @@ describe("StorageService (R2)", () => {
     expect(mockS3ClientConfigs[0]?.requestChecksumCalculation).toBe("WHEN_REQUIRED");
   });
 
+  it("excludes content-length from the presigned upload signature", async () => {
+    // Regression guard: ContentLength on the PutObjectCommand serializes to a
+    // `content-length` header, which the SDK signs into SignedHeaders by
+    // default. A browser's fetch/XHR can't explicitly set that header (it's
+    // a forbidden header name per the Fetch spec), so R2 403s the real PUT
+    // once it's part of the signature. See the real-SDK proof in
+    // test/r2-presign-content-length.contract-spec.ts.
+    const storage = new StorageService(configWithR2());
+    await storage.generateUploadUrl("org-1", "a.pdf", "application/pdf", 512);
+
+    const options = jest.mocked(getSignedUrl).mock.calls.at(-1)?.[2];
+    expect(options?.unsignableHeaders?.has("content-length")).toBe(true);
+  });
+
   it("maps R2 SDK failures to safe STORAGE_UNAVAILABLE errors", async () => {
     jest.mocked(getSignedUrl).mockRejectedValueOnce(new Error("CredentialProviderError"));
     const storage = new StorageService(configWithR2());

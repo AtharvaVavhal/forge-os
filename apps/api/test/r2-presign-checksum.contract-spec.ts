@@ -37,8 +37,14 @@ function configWithR2(): ConfigService<AppConfig, true> {
   } as unknown as ConfigService<AppConfig, true>;
 }
 
-/** Headers a browser's plain `fetch(url, { method: "PUT", body: file, headers: {...} })` actually sends. */
-const BROWSER_SUPPLIED_HEADERS = new Set(["content-length", "host"]);
+/**
+ * Headers a browser's plain `fetch(url, { method: "PUT", body: file, headers: {...} })`
+ * can reliably reproduce. `content-length` is deliberately excluded: the Fetch
+ * spec forbids page code from setting it explicitly, and in practice R2 403s
+ * the request when it's part of X-Amz-SignedHeaders — see
+ * test/r2-presign-content-length.contract-spec.ts.
+ */
+const BROWSER_SUPPLIED_HEADERS = new Set(["host"]);
 
 describe("R2 presigned upload — checksum signing contract (real AWS SDK)", () => {
   it("signs the browser PUT URL without requiring a checksum header the frontend never sends", async () => {
@@ -53,7 +59,7 @@ describe("R2 presigned upload — checksum signing contract (real AWS SDK)", () 
     const url = new URL(upload.uploadUrl);
     const signedHeaders = url.searchParams.get("X-Amz-SignedHeaders");
 
-    expect(signedHeaders).toBe("content-length;host");
+    expect(signedHeaders).toBe("host");
     for (const header of (signedHeaders ?? "").split(";")) {
       expect(BROWSER_SUPPLIED_HEADERS.has(header)).toBe(true);
     }
