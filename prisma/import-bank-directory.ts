@@ -12,7 +12,7 @@
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import * as XLSX from "xlsx";
 
 const IFSC_PATTERN = /^[A-Z]{4}0[A-Z0-9]{6}$/;
@@ -28,7 +28,7 @@ interface SourceRow {
   STATE?: unknown;
 }
 
-interface NormalizedRecord {
+export interface NormalizedRecord {
   bank_name: string;
   bank_code: string;
   ifsc: string;
@@ -131,7 +131,7 @@ function extractRecords(workbook: XLSX.WorkBook): {
 }
 
 /** Dedupes by normalized IFSC, keeping the last occurrence — reports the rest as skipped. */
-function dedupe(records: NormalizedRecord[]): {
+export function dedupe(records: NormalizedRecord[]): {
   deduped: NormalizedRecord[];
   skippedDuplicates: number;
 } {
@@ -144,12 +144,57 @@ function dedupe(records: NormalizedRecord[]): {
   return { deduped: [...byIfsc.values()], skippedDuplicates };
 }
 
-function chunk<T>(items: T[], size: number): T[][] {
+export function chunk<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < items.length; i += size) {
     chunks.push(items.slice(i, i + size));
   }
   return chunks;
+}
+
+/**
+ * Builds one parameterized `INSERT ... ON CONFLICT (ifsc) DO UPDATE`
+ * statement for a batch (values passed as query parameters via
+ * `Prisma.sql`/`Prisma.join`, never string-interpolated) — a pure function
+ * so the generated SQL/params can be asserted on directly in tests without a
+ * database. `id` and `created_at` are left to their column defaults on
+ * insert and are untouched on conflict, matching the row's original create
+ * time. `ifsc` is the sole conflict/idempotency key, so re-running the same
+ * source file always converges to the same rows regardless of how a prior
+ * run ended.
+ */
+export function buildBatchUpsertSql(batch: NormalizedRecord[]): Prisma.Sql {
+  const rows = Prisma.join(
+    batch.map(
+      (record) =>
+        Prisma.sql`(${record.ifsc}, ${record.bank_name}, ${record.bank_code}, ${record.branch_name}, ${record.address}, ${record.city}, ${record.district}, ${record.state}, now())`
+    )
+  );
+
+  return Prisma.sql`
+    INSERT INTO bank_directory_entries
+      (ifsc, bank_name, bank_code, branch_name, address, city, district, state, updated_at)
+    VALUES ${rows}
+    ON CONFLICT (ifsc) DO UPDATE SET
+      bank_name   = EXCLUDED.bank_name,
+      bank_code   = EXCLUDED.bank_code,
+      branch_name = EXCLUDED.branch_name,
+      address     = EXCLUDED.address,
+      city        = EXCLUDED.city,
+      district    = EXCLUDED.district,
+      state       = EXCLUDED.state,
+      updated_at  = EXCLUDED.updated_at
+  `;
+}
+
+/**
+ * Replaces what used to be one Prisma `upsert()` call per record — at
+ * ~183k records, a round-trip per row against remote Render PostgreSQL
+ * dominated the runtime; this does the same conflict resolution in one
+ * statement per batch instead.
+ */
+async function upsertBatch(prisma: PrismaClient, batch: NormalizedRecord[]): Promise<void> {
+  await prisma.$executeRaw(buildBatchUpsertSql(batch));
 }
 
 async function main(): Promise<void> {
@@ -168,16 +213,13 @@ async function main(): Promise<void> {
     let imported = 0;
     let updated = 0;
 
-    for (const batch of chunk(deduped, BATCH_SIZE)) {
-      await prisma.$transaction(
-        batch.map((record) =>
-          prisma.bankDirectoryEntry.upsert({
-            where: { ifsc: record.ifsc },
-            create: record,
-            update: record,
-          })
-        )
+    const batches = chunk(deduped, BATCH_SIZE);
+    for (const [index, batch] of batches.entries()) {
+      console.log(
+        `Importing batch ${index + 1}/${batches.length} (${batch.length} records, ` +
+          `${Math.round(((index + 1) / batches.length) * 100)}%)...`
       );
+      await upsertBatch(prisma, batch);
       for (const record of batch) {
         if (existingIfscs.has(record.ifsc)) updated += 1;
         else imported += 1;
@@ -205,7 +247,11 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error) => {
-  console.error("Bank directory import failed:", error);
-  process.exitCode = 1;
-});
+// Only run when executed directly (`tsx prisma/import-bank-directory.ts`),
+// not when imported by tests for its pure helpers.
+if (require.main === module) {
+  main().catch((error) => {
+    console.error("Bank directory import failed:", error);
+    process.exitCode = 1;
+  });
+}
