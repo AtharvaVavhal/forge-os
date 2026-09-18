@@ -8,6 +8,7 @@ import { ForgeFundController } from "./controllers/forge-fund.controller";
 import { TaxRatesController } from "./controllers/tax-rates.controller";
 import { SequencesController } from "./controllers/sequences.controller";
 import { WebhooksController } from "./controllers/webhooks.controller";
+import { FinanceKycController } from "./controllers/finance-kyc.controller";
 import { InvoicesService } from "./services/invoices.service";
 import { PaymentsService } from "./services/payments.service";
 import { RefundsService } from "./services/refunds.service";
@@ -18,18 +19,13 @@ import { TaxRatesService } from "./services/tax-rates.service";
 import { SequencesService } from "./services/sequences.service";
 import { RazorpayService } from "./services/razorpay.service";
 import { RazorpayOrdersService } from "./services/razorpay-orders.service";
+import { FinanceKycService } from "./services/finance-kyc.service";
 
 /**
  * Document 5 §1: `finance` owns Invoice, Payment, Refund, CreditNote,
  * Expense, ForgeFundEntry, InvoiceSequence, CreditNoteSequence, TaxRate,
- * WebhookEvent; may depend on `projects` (read — Expense/Invoice project
- * FK validation reuses only Prisma queries, not a cross-module service
- * import, per the same module-boundary reasoning as every other module's
- * own `scope-guards.ts`), `crm` (read Company), `shared` (AuditService,
- * global). Must not import `sales` directly — `InvoicesService.
- * createFromProposal` queries `Proposal`/`ProposalLineItem` straight
- * through Prisma, the same pattern B2's Deal-WON check used for `Proposal`
- * before `sales` existed.
+ * WebhookEvent. K7 adds Finance KYC review (`finance/kyc`) — org-scoped
+ * review of team member KYC profiles (no payout/balance models).
  */
 @Module({
   controllers: [
@@ -42,6 +38,7 @@ import { RazorpayOrdersService } from "./services/razorpay-orders.service";
     TaxRatesController,
     SequencesController,
     WebhooksController,
+    FinanceKycController,
   ],
   providers: [
     InvoicesService,
@@ -54,9 +51,8 @@ import { RazorpayOrdersService } from "./services/razorpay-orders.service";
     SequencesService,
     RazorpayService,
     RazorpayOrdersService,
+    FinanceKycService,
   ],
-  // PortalModule imports this narrowly for `createOrderForPortalInvoice`
-  // (Document 5 §11 pay) — no other finance write surfaces are exported.
   exports: [RazorpayOrdersService, InvoicesService],
 })
 export class FinanceModule {}

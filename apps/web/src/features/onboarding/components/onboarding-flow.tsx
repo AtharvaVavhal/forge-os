@@ -8,10 +8,25 @@ import { authQueryKeys } from "@/features/auth/api/query-keys";
 import type { UserRole } from "@forge/types";
 import { MirrorScreen } from "./mirror-screen";
 import { OrientationScreen } from "./orientation-screen";
+import { TeamOnboardingFlow } from "./team-onboarding-flow";
 
 type Step = "mirror" | "orientation" | "departing";
 
 export function OnboardingFlow({
+  name,
+  role,
+}: {
+  name: string;
+  role: UserRole;
+}) {
+  if (role === "TEAM_MEMBER") {
+    return <TeamOnboardingFlow name={name} />;
+  }
+
+  return <StandardOnboardingFlow name={name} role={role} />;
+}
+
+function StandardOnboardingFlow({
   name,
   role,
 }: {

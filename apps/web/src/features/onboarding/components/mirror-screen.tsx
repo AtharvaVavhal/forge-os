@@ -24,7 +24,7 @@ export function MirrorScreen({
     if (reducedMotion) {
       return;
     }
-    const timer = window.setTimeout(() => setCueReady(true), 1600);
+    const timer = window.setTimeout(() => setCueReady(true), 1400);
     return () => window.clearTimeout(timer);
   }, [reducedMotion]);
 
@@ -61,26 +61,35 @@ export function MirrorScreen({
         <h1
           className={cn(
             "font-display text-[clamp(2.25rem,6vw,4rem)] font-bold tracking-[-0.02em] text-ink",
-            !reducedMotion && "animate-[forge-onboard-fade_300ms_ease-out_both]"
+            !reducedMotion && "animate-[forge-onboard-rise_220ms_ease-out_both]"
           )}
-          style={!reducedMotion ? { animationDelay: "200ms" } : undefined}
+          style={!reducedMotion ? { animationDelay: "40ms" } : undefined}
         >
           {displayName}.
         </h1>
         <p
           className={cn(
             "font-mono text-[0.875rem] uppercase tracking-[0.08em] text-ink/50",
-            !reducedMotion && "animate-[forge-onboard-fade_300ms_ease-out_both]"
+            !reducedMotion && "animate-[forge-onboard-fade_220ms_ease-out_both]"
           )}
-          style={!reducedMotion ? { animationDelay: "500ms" } : undefined}
+          style={!reducedMotion ? { animationDelay: "120ms" } : undefined}
         >
           {roleLine}
+        </p>
+        <p
+          className={cn(
+            "mt-2 max-w-sm font-[family-name:var(--font-body)] text-[1rem] leading-relaxed text-ink/65",
+            !reducedMotion && "animate-[forge-onboard-fade_220ms_ease-out_both]"
+          )}
+          style={!reducedMotion ? { animationDelay: "180ms" } : undefined}
+        >
+          This is how you&apos;ll appear inside Forge.
         </p>
       </div>
 
       <p
         className={cn(
-          "absolute bottom-10 font-mono text-[0.75rem] tracking-[0.06em] text-ink/40 transition-opacity duration-500",
+          "absolute bottom-10 font-mono text-[0.75rem] tracking-[0.06em] text-ink/40 transition-opacity duration-500 motion-reduce:transition-none",
           showCue ? "opacity-100" : "opacity-0"
         )}
       >

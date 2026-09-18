@@ -38,4 +38,11 @@ export const financeKeys = {
     list: (filters: Record<string, string | number | boolean | undefined>) =>
       ["finance", "tax-rates", "list", filters] as const,
   },
+  /** Keys hold IDs/filters only — never PAN, bank, or other KYC field values. */
+  kyc: {
+    all: ["finance", "kyc"] as const,
+    list: (filters: Record<string, string | number | boolean | undefined>) =>
+      ["finance", "kyc", "list", filters] as const,
+    detail: (id: string) => ["finance", "kyc", "detail", id] as const,
+  },
 };

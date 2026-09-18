@@ -1,8 +1,10 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { UserRole } from "@prisma/client";
 import { PrismaService } from "../../../database/prisma.service";
 import { AuditService, AUDIT_ACTIONS } from "../../shared/audit.service";
 import { OrganizationContextService } from "../../shared/organization-context.service";
+import { TeamOnboardingGateService } from "../../team/services/team-onboarding-gate.service";
 import { CsrfService } from "./csrf.service";
 import { PasswordService } from "./password.service";
 import { SessionService } from "./session.service";
@@ -31,7 +33,8 @@ export class AuthService {
     private readonly passwordService: PasswordService,
     private readonly sessionService: SessionService,
     private readonly csrfService: CsrfService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly teamOnboardingGate: TeamOnboardingGateService
   ) {}
 
   async login(
@@ -153,6 +156,10 @@ export class AuthService {
    * Marks first-run onboarding complete. Idempotent: if `onboarded_at` is
    * already set, returns the current session view without writing.
    *
+   * TEAM_MEMBER must pass KYC + payout gates (submitted-or-better KYC with
+   * required docs + complete payout profile) immediately before the write.
+   * Non-team roles keep the prior orientation-only behavior.
+   *
    * When a write occurs, `User.updated_at` bumps (Prisma `@updatedAt`) and
    * would invalidate the caller's JWT via the security-stamp fence — so this
    * method always re-issues `forge_session` after a successful first write.
@@ -161,28 +168,63 @@ export class AuthService {
     user: AuthenticatedUser,
     response: Response
   ): Promise<SessionUserView> {
-    const existing = await this.prisma.user.findUnique({ where: { id: user.id } });
-    if (!existing || !existing.active) {
-      throw new UnauthorizedException({
-        code: "UNAUTHENTICATED",
-        message: "Authentication required.",
-      });
-    }
-    if (existing.organization_id !== user.organizationId) {
-      throw new UnauthorizedException({
-        code: "UNAUTHENTICATED",
-        message: "Authentication required.",
-      });
-    }
+    let didWriteOnboardedAt = false;
 
-    if (existing.onboarded_at) {
-      return this.toSessionView(existing);
-    }
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<
+        Array<{
+          id: string;
+          email: string;
+          name: string;
+          role: UserRole;
+          organization_id: string;
+          active: boolean;
+          onboarded_at: Date | null;
+        }>
+      >`
+        SELECT id, email, name, role, organization_id, active, onboarded_at
+        FROM users
+        WHERE id = ${user.id}::uuid
+        FOR UPDATE
+      `;
 
-    const updated = await this.prisma.user.update({
-      where: { id: existing.id },
-      data: { onboarded_at: new Date() },
+      const existing = locked[0];
+      if (!existing || !existing.active) {
+        throw new UnauthorizedException({
+          code: "UNAUTHENTICATED",
+          message: "Authentication required.",
+        });
+      }
+      if (existing.organization_id !== user.organizationId) {
+        throw new UnauthorizedException({
+          code: "UNAUTHENTICATED",
+          message: "Authentication required.",
+        });
+      }
+
+      if (existing.onboarded_at) {
+        return existing;
+      }
+
+      if (existing.role === UserRole.TEAM_MEMBER) {
+        await this.teamOnboardingGate.assertTeamMemberReady(
+          existing.organization_id,
+          existing.id,
+          tx
+        );
+      }
+
+      didWriteOnboardedAt = true;
+      return tx.user.update({
+        where: { id: existing.id },
+        data: { onboarded_at: new Date() },
+      });
     });
+
+    // Idempotent path: already onboarded — do not re-stamp the session cookie.
+    if (!didWriteOnboardedAt) {
+      return this.toSessionView(updated);
+    }
 
     const { token, expiresInSeconds } = this.sessionService.signSession({
       userId: updated.id,

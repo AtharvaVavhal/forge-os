@@ -452,3 +452,37 @@ h6 {
     opacity: 1;
   }
 }
+
+@keyframes forge-onboard-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes forge-onboard-check {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .motion-safe\:animate-\[forge-onboard-rise_220ms_ease-out_both\],
+  .motion-safe\:animate-\[forge-onboard-fade_150ms_ease-out_both\],
+  .motion-safe\:animate-\[forge-onboard-fade_400ms_ease-out_both\],
+  .motion-safe\:animate-\[forge-onboard-fade_600ms_ease-out_both\],
+  .motion-safe\:animate-\[forge-onboard-check_600ms_ease-out_both\] {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

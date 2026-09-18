@@ -127,6 +127,17 @@ export const AUDIT_ACTIONS = {
   // B6 Team + Shared Systems (Document 5 §19; Document 6 §17 Tier A & B)
   DOCUMENT_DELETED: "document.deleted",
   NOTE_VISIBILITY_CHANGED: "note.visibility_changed",
+  // Team member KYC (collection + submit + finance review)
+  KYC_CREATED: "kyc.created",
+  KYC_UPDATED: "kyc.updated",
+  KYC_SUBMITTED: "kyc.submitted",
+  KYC_DOCUMENT_UPLOADED: "kyc.document_uploaded",
+  KYC_DOCUMENT_REMOVED: "kyc.document_removed",
+  KYC_REVIEW_STARTED: "kyc.review_started",
+  KYC_VERIFIED: "kyc.verified",
+  KYC_REJECTED: "kyc.rejected",
+  PAYOUT_PROFILE_CREATED: "payout_profile.created",
+  PAYOUT_PROFILE_UPDATED: "payout_profile.updated",
   // B7 Client Portal (Document 5 §19 portal auth audit column)
   PORTAL_LOGIN_SUCCEEDED: "portal.auth.login_succeeded",
   PORTAL_LOGIN_FAILED: "portal.auth.login_failed",

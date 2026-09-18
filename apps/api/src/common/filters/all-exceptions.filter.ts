@@ -95,7 +95,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
             : typeof record.message === "string"
               ? record.message
               : exception.message,
-          details: isValidationMessage ? { fields: record.message } : undefined,
+          details: isValidationMessage
+            ? { fields: record.message }
+            : record.details !== undefined
+              ? record.details
+              : undefined,
         };
       }
 

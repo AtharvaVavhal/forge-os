@@ -3,14 +3,15 @@
 import { ApiClientError } from "@forge/api-client";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { acceptInvitation, previewInvitation } from "@/features/auth/api/auth-api";
 import { getGoogleWorkspaceStartPath } from "@/lib/api/base-url";
 import { cn } from "@/lib/cn";
-import { roleTitleForInvite } from "../copy";
+import { ONBOARDING_ROLE_LABEL } from "../copy";
 
 export function GateScreen({ token }: { token: string }) {
   const [proceedError, setProceedError] = useState<string | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
 
   const preview = useQuery({
     // Do not put the raw invitation token in the query key (devtools / persistence).
@@ -39,15 +40,10 @@ export function GateScreen({ token }: { token: string }) {
   });
 
   const invalid = preview.isError;
-  const inviterLine = useMemo(() => {
-    if (!preview.data) return null;
-    const roleTitle = roleTitleForInvite(preview.data.role);
-    const inviter = preview.data.inviterName?.trim();
-    if (inviter) {
-      return `${inviter} invited you to join as ${roleTitle}.`;
-    }
-    return `You've been invited to join as ${roleTitle}.`;
-  }, [preview.data]);
+  const inviterName = preview.data?.inviterName?.trim() || null;
+  const roleLine = preview.data
+    ? `${ONBOARDING_ROLE_LABEL[preview.data.role]} · FORGE`
+    : null;
 
   if (preview.isPending) {
     return (
@@ -79,15 +75,44 @@ export function GateScreen({ token }: { token: string }) {
 
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center bg-paper px-6 text-center">
-      <p className="type-mono-label text-steel">Forge</p>
-      <h1 className="font-display mt-6 max-w-xl text-[clamp(1.75rem,4vw,2.5rem)] font-bold leading-tight tracking-[-0.02em] text-ink">
-        You&apos;ve been invited to Forge.
+      <p
+        className={cn(
+          "font-mono text-[0.875rem] uppercase tracking-[0.12em] text-ink/55",
+          !reducedMotion && "animate-[forge-onboard-fade_400ms_ease-out_both]"
+        )}
+      >
+        FORGE
+      </p>
+      <h1
+        className={cn(
+          "font-display mt-6 max-w-xl text-[clamp(1.75rem,4vw,2.5rem)] font-bold leading-tight tracking-[-0.02em] text-ink",
+          !reducedMotion && "animate-[forge-onboard-rise_450ms_ease-out_both]"
+        )}
+        style={!reducedMotion ? { animationDelay: "60ms" } : undefined}
+      >
+        You&apos;ve been invited{" "}
+        <br />
+        to Forge.
       </h1>
-      {inviterLine ? (
-        <p className="mt-4 max-w-lg font-[family-name:var(--font-body)] text-[length:var(--text-body-size)] leading-relaxed text-ink/75">
-          {inviterLine}
-        </p>
-      ) : null}
+
+      <div
+        className={cn(
+          "mt-6 flex flex-col items-center gap-2",
+          !reducedMotion && "animate-[forge-onboard-fade_400ms_ease-out_both]"
+        )}
+        style={!reducedMotion ? { animationDelay: "160ms" } : undefined}
+      >
+        {inviterName ? (
+          <p className="font-[family-name:var(--font-body)] text-[length:var(--text-body-size)] text-ink/75">
+            {inviterName}
+          </p>
+        ) : null}
+        {roleLine ? (
+          <p className="font-mono text-[0.75rem] uppercase tracking-[0.08em] text-ink/50">
+            {roleLine}
+          </p>
+        ) : null}
+      </div>
 
       {proceedError ? (
         <p className="type-helper mt-6 text-danger-deep" role="alert">
@@ -103,19 +128,27 @@ export function GateScreen({ token }: { token: string }) {
           proceed.mutate();
         }}
         className={cn(
-          "mt-10 inline-flex min-h-12 items-center justify-center gap-3 rounded-md border border-steel/25 bg-paper-elev px-8",
-          "font-display text-[length:var(--text-body-size)] font-semibold text-ink shadow-[var(--elevation-1)]",
+          "mt-10 inline-flex min-h-12 items-center justify-center gap-3 rounded-[4px] border border-steel/25 bg-paper-elev px-8",
+          "font-display text-[length:var(--text-body-size)] font-semibold text-ink",
           "transition-[background-color,transform] duration-150 ease-out",
           "hover:bg-ink/[0.04] motion-safe:active:scale-[0.98]",
-          "disabled:opacity-60"
+          "disabled:opacity-60",
+          !reducedMotion && "animate-[forge-onboard-fade_400ms_ease-out_both]"
         )}
+        style={!reducedMotion ? { animationDelay: "240ms" } : undefined}
       >
         <GoogleMark />
         Continue with Google
       </button>
 
-      <p className="type-mono-label mt-8 max-w-sm text-steel/70">
-        By continuing, you agree to Forge&apos;s Terms of Service.
+      <p
+        className={cn(
+          "type-mono-label mt-8 max-w-sm text-steel/70",
+          !reducedMotion && "animate-[forge-onboard-fade_400ms_ease-out_both]"
+        )}
+        style={!reducedMotion ? { animationDelay: "300ms" } : undefined}
+      >
+        Secure access · Google SSO
       </p>
     </main>
   );
@@ -141,5 +174,27 @@ function GoogleMark() {
         d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58Z"
       />
     </svg>
+  );
+}
+
+function subscribeReducedMotion(onStoreChange: () => void): () => void {
+  const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+  mq.addEventListener("change", onStoreChange);
+  return () => mq.removeEventListener("change", onStoreChange);
+}
+
+function getReducedMotionSnapshot(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function getReducedMotionServerSnapshot(): boolean {
+  return false;
+}
+
+function usePrefersReducedMotion(): boolean {
+  return useSyncExternalStore(
+    subscribeReducedMotion,
+    getReducedMotionSnapshot,
+    getReducedMotionServerSnapshot
   );
 }

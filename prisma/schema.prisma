@@ -235,6 +235,38 @@ enum DomainEventStatus {
   FAILED
 }
 
+enum KycStatus {
+  NOT_STARTED
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+}
+
+enum KycGovernmentIdType {
+  AADHAAR
+  PASSPORT
+  DRIVING_LICENCE
+  VOTER_ID
+  OTHER
+}
+
+enum KycDocumentType {
+  PAN_CARD
+  GOVERNMENT_ID
+}
+
+enum KycDocumentStatus {
+  UPLOADED
+  REMOVED
+}
+
+enum PayoutMethod {
+  BANK_TRANSFER
+  UPI
+}
+
 // ─── Platform / Shared ───────────────────────────────────────────────────────
 
 model Organization {
@@ -279,6 +311,9 @@ model Organization {
   maintenance_contracts  MaintenanceContract[]
   support_tickets        SupportTicket[]
   proposal_line_items    ProposalLineItem[]
+  kyc_profiles           KycProfile[]
+  kyc_documents          KycDocument[]
+  payout_profiles        PayoutProfile[]
 
   @@map("organizations")
 }
@@ -313,6 +348,8 @@ model User {
   credit_notes_approved CreditNote[]      @relation("CreditNoteApprovedBy")
   expenses_recorded     Expense[]         @relation("ExpenseRecordedBy")
   forge_fund_entries    ForgeFundEntry[]  @relation("ForgeFundApprovedBy")
+  kyc_profile           KycProfile?
+  payout_profile        PayoutProfile?
 
   @@unique([organization_id, email])
   @@index([organization_id])
@@ -1161,4 +1198,86 @@ model SupportTicket {
   @@index([raised_by_client_user_id])
   @@index([status])
   @@map("support_tickets")
+}
+
+// ─── Team member KYC + payout profile (additive; not team earnings/payouts) ─
+
+model KycProfile {
+  id                   String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id      String               @db.Uuid
+  user_id              String               @unique @db.Uuid
+  legal_name           String?
+  date_of_birth        DateTime?            @db.Date
+  mobile               String?
+  address_line1        String?
+  address_line2        String?
+  city                 String?
+  state                String?
+  postal_code          String?
+  pan                  String?
+  government_id_type   KycGovernmentIdType?
+  government_id_number String?
+  status               KycStatus            @default(NOT_STARTED)
+  submitted_at         DateTime?            @db.Timestamptz(6)
+  verified_at          DateTime?            @db.Timestamptz(6)
+  rejected_at          DateTime?            @db.Timestamptz(6)
+  rejection_reason     String?              @db.Text
+  created_at           DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime             @updatedAt @db.Timestamptz(6)
+
+  organization Organization  @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  user         User          @relation(fields: [user_id], references: [id], onDelete: Restrict)
+  documents    KycDocument[]
+
+  @@index([organization_id])
+  @@index([organization_id, status])
+  @@map("kyc_profiles")
+}
+
+model KycDocument {
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id String            @db.Uuid
+  kyc_profile_id  String            @db.Uuid
+  document_type   KycDocumentType
+  storage_key     String
+  filename        String
+  mime_type       String
+  size_bytes      Int
+  status          KycDocumentStatus @default(UPLOADED)
+  created_at      DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime          @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  kyc_profile  KycProfile   @relation(fields: [kyc_profile_id], references: [id], onDelete: Restrict)
+
+  @@index([organization_id])
+  @@index([kyc_profile_id])
+  @@index([kyc_profile_id, document_type])
+  @@unique([storage_key])
+  @@map("kyc_documents")
+}
+
+model PayoutProfile {
+  id                   String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organization_id      String        @db.Uuid
+  user_id              String        @unique @db.Uuid
+  preferred_method     PayoutMethod?
+  account_holder_name  String?
+  bank_name            String?
+  account_number       String?
+  ifsc                 String?
+  upi_id               String?
+  /// Optional UPI QR image/PDF stored in R2 — metadata only, never a public/signed URL.
+  upi_qr_storage_key   String?
+  upi_qr_filename      String?
+  upi_qr_mime_type     String?
+  upi_qr_size_bytes    Int?
+  created_at           DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime      @updatedAt @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Restrict)
+  user         User         @relation(fields: [user_id], references: [id], onDelete: Restrict)
+
+  @@index([organization_id])
+  @@map("payout_profiles")
 }

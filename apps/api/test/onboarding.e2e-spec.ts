@@ -112,7 +112,7 @@ describe("Onboarding (e2e)", () => {
       const unauth = await request(app.getHttpServer()).post("/api/v1/auth/onboarding/complete");
       expect(unauth.status).toBe(401);
 
-      const fixture = await createTestUser(app, { role: "TEAM_MEMBER", onboarded: false });
+      const fixture = await createTestUser(app, { role: "FOUNDER_ADMIN", onboarded: false });
       const login = await request(app.getHttpServer())
         .post("/api/v1/auth/login")
         .send({ email: fixture.email, password: fixture.password });
@@ -127,8 +127,8 @@ describe("Onboarding (e2e)", () => {
       expect(noCsrf.body.error.code).toBe("CSRF_TOKEN_INVALID");
     });
 
-    it("sets onboardedAt, re-issues session, and is idempotent", async () => {
-      const fixture = await createTestUser(app, { role: "TEAM_MEMBER", onboarded: false });
+    it("FOUNDER_ADMIN: sets onboardedAt, re-issues session, and is idempotent", async () => {
+      const fixture = await createTestUser(app, { role: "FOUNDER_ADMIN", onboarded: false });
       const login = await request(app.getHttpServer())
         .post("/api/v1/auth/login")
         .send({ email: fixture.email, password: fixture.password });
@@ -181,6 +181,23 @@ describe("Onboarding (e2e)", () => {
         .get("/api/v1/auth/me")
         .set("Cookie", `forge_session=${newSession}`);
       expect(stillValid.status).toBe(200);
+    });
+
+    it("SALES (non-team) onboarding still works without KYC/payout", async () => {
+      const fixture = await createTestUser(app, { role: "SALES", onboarded: false });
+      const login = await request(app.getHttpServer())
+        .post("/api/v1/auth/login")
+        .send({ email: fixture.email, password: fixture.password });
+      const setCookie = login.headers["set-cookie"] as unknown as string[];
+      const session = extractCookie(setCookie, "forge_session")!;
+      const csrf = extractCookie(setCookie, "forge_csrf")!;
+
+      const complete = await request(app.getHttpServer())
+        .post("/api/v1/auth/onboarding/complete")
+        .set("Cookie", `forge_session=${session}; forge_csrf=${csrf}`)
+        .set("X-CSRF-Token", csrf);
+      expect(complete.status).toBe(200);
+      expect(complete.body.onboardedAt).toBeTruthy();
     });
   });
 

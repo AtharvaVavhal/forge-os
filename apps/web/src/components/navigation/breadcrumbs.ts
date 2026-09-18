@@ -19,6 +19,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   expenses: "Expenses",
   "forge-fund": "Forge Fund",
   "tax-rates": "Tax rates",
+  kyc: "KYC Review",
   team: "Team",
   members: "Members",
   workload: "Workload",

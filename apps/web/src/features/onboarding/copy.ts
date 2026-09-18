@@ -11,7 +11,7 @@ export const ONBOARDING_ROLE_LABEL: Record<UserRole, string> = {
 
 /** One-line Orientation copy by role (V2). */
 export const ONBOARDING_ORIENTATION_COPY: Record<UserRole, string> = {
-  TEAM_MEMBER: "Projects. Time. Payouts. Everything in one system.",
+  TEAM_MEMBER: "Everything is ready. Your workspace is waiting.",
   OPERATIONS: "Team. Projects. Finance. The full operating picture.",
   SALES: "Leads. Clients. Pipeline. One system, no switching.",
   FINANCE: "Invoices. Payouts. Fund. Complete financial control.",

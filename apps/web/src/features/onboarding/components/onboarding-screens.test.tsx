@@ -29,7 +29,8 @@ describe("GateScreen", () => {
     renderWithQuery(<GateScreen token="abc" />);
 
     expect(await screen.findByRole("heading", { name: /you've been invited to forge/i })).toBeInTheDocument();
-    expect(screen.getByText(/Atharva invited you to join as Team Member/i)).toBeInTheDocument();
+    expect(screen.getByText("Atharva")).toBeInTheDocument();
+    expect(screen.getByText(/team member · forge/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /continue with google/i })).toBeInTheDocument();
     expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
   });

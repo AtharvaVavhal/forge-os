@@ -12,15 +12,18 @@ import { SessionService } from "./services/session.service";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { PermissionsGuard } from "./guards/permissions.guard";
 import { CsrfGuard } from "./guards/csrf.guard";
+import { TeamModule } from "../team/team.module";
 
 /**
  * `JwtModule.register({})` with no static options: `SessionService` passes
  * the signing key/expiry explicitly on every `sign`/`verify` call (two
  * different secrets/audiences — session vs. password-reset tokens — live
  * in one service, so a single static module-level secret wouldn't fit).
+ *
+ * Imports `TeamModule` for TEAM_MEMBER onboarding KYC/payout gates only.
  */
 @Module({
-  imports: [JwtModule.register({})],
+  imports: [JwtModule.register({}), TeamModule],
   controllers: [AuthController, InvitationsController],
   providers: [
     AuthService,

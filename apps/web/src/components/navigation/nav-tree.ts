@@ -168,6 +168,14 @@ export const NAV_TREE: NavGroup[] = [
         visibleTo: FINANCE_ROLES,
         permission: "finance.read",
       },
+      {
+        id: "kyc-review",
+        label: "KYC Review",
+        href: "/finance/kyc",
+        icon: "members",
+        visibleTo: FINANCE_ROLES,
+        permission: "finance.manage",
+      },
     ],
   },
   {
