@@ -335,6 +335,13 @@ export function parsePortalSignedDownloadUrl(value: unknown): PortalSignedDownlo
 
   const url = asString(node.url) ?? asString(node.downloadUrl);
   if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    if (parsed.protocol === "http:" && process.env.NODE_ENV === "production") return null;
+  } catch {
+    return null;
+  }
 
   return {
     url,

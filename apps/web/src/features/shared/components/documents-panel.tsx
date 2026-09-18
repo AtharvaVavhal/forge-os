@@ -21,6 +21,7 @@ import { Can } from "@/features/auth/authorization/can";
 import { FormActions } from "@/features/crm/components/page-chrome";
 import { enumLabel, formatTimestamp } from "@/features/crm/format";
 import { queryErrorMessage } from "@/lib/api/query-error";
+import { openTrustedHttpsUrl } from "@/lib/security/safe-url";
 import { SharedQueryState } from "./shared-query-state";
 import {
   deleteDocument,
@@ -66,7 +67,13 @@ export function DocumentsPanel({ parent }: { parent: DocumentParent }) {
   const downloadMutation = useMutation({
     mutationFn: getDocumentDownloadUrl,
     onSuccess: (url) => {
-      window.open(url, "_blank", "noopener,noreferrer");
+      if (!openTrustedHttpsUrl(url)) {
+        pushToast({
+          title: "Couldn’t open download",
+          description: "The signed URL was not a trusted HTTPS link.",
+          tone: "danger",
+        });
+      }
     },
     onError: (error) =>
       pushToast({ title: "Couldn’t get download URL", description: queryErrorMessage(error), tone: "danger" }),

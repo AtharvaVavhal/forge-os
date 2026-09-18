@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { listPortalProposals } from "../api/portal-api";
 import { portalKeys } from "../api/query-keys";
+import { queryErrorMessage } from "@/lib/api/query-error";
 
 export function PortalProposalsPage() {
   const { data, isLoading, isError, error } = useQuery({
@@ -36,9 +37,11 @@ export function PortalProposalsPage() {
       )}
 
       {isError && (
-        <Alert variant="danger" title="Service Unavailable" data-testid="portal-proposals-error">
-          {(error as Error)?.message || "Proposals service is currently unavailable."}
-        </Alert>
+        <div data-testid="portal-proposals-error">
+          <Alert tone="danger" title="Service Unavailable">
+            {queryErrorMessage(error)}
+          </Alert>
+        </div>
       )}
 
       {data && data.items.length === 0 && (

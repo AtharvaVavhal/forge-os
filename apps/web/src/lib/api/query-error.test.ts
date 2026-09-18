@@ -28,4 +28,22 @@ describe("queryErrorMessage", () => {
       "We couldn’t reach the API. Check your connection and try again."
     );
   });
+
+  it("masks 429 rate limits", () => {
+    expect(
+      queryErrorMessage(new ApiClientError(429, { code: "RATE_LIMITED", message: "slow down", requestId: "r" }))
+    ).toBe("Too many requests. Wait a moment and try again.");
+  });
+
+  it("masks 5xx without leaking internals", () => {
+    expect(
+      queryErrorMessage(
+        new ApiClientError(500, {
+          code: "INTERNAL",
+          message: "SQLSTATE relation does not exist",
+          requestId: "r",
+        })
+      )
+    ).toBe("The service is temporarily unavailable. Try again shortly.");
+  });
 });

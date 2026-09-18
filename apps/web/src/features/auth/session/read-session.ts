@@ -2,7 +2,7 @@ import { ApiClientError } from "@forge/api-client";
 import { cookies } from "next/headers";
 import { fetchAuthContextFromServer } from "../api/auth-api.server";
 import { isUnauthorizedError } from "../api/classify-auth-error";
-import type { InternalAuthContext } from "../types";
+import { SESSION_COOKIE_NAME, type InternalAuthContext } from "../types";
 
 export type AuthReadResult =
   | { status: "authenticated"; context: InternalAuthContext }
@@ -14,13 +14,14 @@ export type AuthReadResult =
  * `/auth/session` fallback). Returns a classified result so callers can
  * redirect, render, or surface an error without inventing backend behavior.
  *
- * No cookies at all → unauthenticated without calling the API (the session
- * cookie is httpOnly and required). A network failure *with* a cookie is
- * unavailable, not a silent login redirect.
+ * No `forge_session` cookie → unauthenticated without calling the API.
+ * A network failure *with* a session cookie is unavailable, not a silent
+ * login redirect. Does not treat `portal_session` as workspace auth.
  */
 export async function readAuthContext(): Promise<AuthReadResult> {
   const cookieStore = await cookies();
-  if (!cookieStore.toString()) {
+  const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME);
+  if (!sessionCookie?.value) {
     return { status: "unauthenticated" };
   }
 

@@ -27,6 +27,12 @@ export function queryErrorMessage(error: unknown): string {
   if (isNotFoundError(error)) {
     return "This record doesn’t exist, or you don’t have access to it.";
   }
+  if (error instanceof ApiClientError && error.status === 429) {
+    return "Too many requests. Wait a moment and try again.";
+  }
+  if (error instanceof ApiClientError && error.status >= 500) {
+    return "The service is temporarily unavailable. Try again shortly.";
+  }
   if (isConflictError(error)) {
     return error instanceof ApiClientError ? error.message : "This change conflicts with the current record.";
   }

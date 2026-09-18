@@ -1,7 +1,6 @@
 "use client";
 
 export default function LoginError({
-  error,
   reset,
 }: {
   error: Error & { digest?: string };
@@ -13,7 +12,7 @@ export default function LoginError({
         Sign-in unavailable
       </p>
       <p className="font-display text-[length:var(--text-body-size)] text-ink/80">
-        {error.message || "The sign-in page failed to load. Try again."}
+        The sign-in page failed to load. Try again.
       </p>
       <button
         type="button"

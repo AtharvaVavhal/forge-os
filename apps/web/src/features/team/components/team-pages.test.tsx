@@ -91,6 +91,33 @@ describe("Team members", () => {
     });
   });
 
+  it("hides FOUNDER_ADMIN invite option for non-founder callers", async () => {
+    const user = userEvent.setup();
+    renderWithShell(
+      <MembersPage />,
+      createAuthContext({
+        role: "OPERATIONS",
+        permissions: ["users.read", "users.manage"],
+      })
+    );
+    await user.click(await screen.findByRole("button", { name: "Invite member" }));
+    const options = Array.from(screen.getByLabelText(/role/i).querySelectorAll("option")).map(
+      (el) => el.getAttribute("value")
+    );
+    expect(options).not.toContain("FOUNDER_ADMIN");
+    expect(options).toContain("TEAM_MEMBER");
+  });
+
+  it("shows FOUNDER_ADMIN invite option for founder callers", async () => {
+    const user = userEvent.setup();
+    renderWithShell(<MembersPage />, manage);
+    await user.click(await screen.findByRole("button", { name: "Invite member" }));
+    const options = Array.from(screen.getByLabelText(/role/i).querySelectorAll("option")).map(
+      (el) => el.getAttribute("value")
+    );
+    expect(options).toContain("FOUNDER_ADMIN");
+  });
+
   it("shows unavailable on 404 instead of zero members", async () => {
     vi.mocked(listTeamMembers).mockRejectedValue(
       new ApiClientError(404, { code: "NOT_FOUND", message: "missing", requestId: "r" })

@@ -19,6 +19,8 @@ vi.mock("@/features/shared/api/shared-api", async () => {
 import { searchRecords } from "@/features/shared/api/shared-api";
 
 describe("Command palette", () => {
+  const founder = createAuthContext({ role: "FOUNDER_ADMIN", permissions: ["*"] });
+
   beforeEach(() => {
     vi.mocked(searchRecords).mockReset();
     vi.mocked(searchRecords).mockResolvedValue([]);
@@ -30,7 +32,7 @@ describe("Command palette", () => {
       <WorkspaceShell>
         <p>Page</p>
       </WorkspaceShell>,
-      createAuthContext({ role: "FOUNDER_ADMIN" })
+      founder
     );
 
     await user.keyboard("{Meta>}k{/Meta}");
@@ -45,7 +47,7 @@ describe("Command palette", () => {
       <WorkspaceShell>
         <p>Page</p>
       </WorkspaceShell>,
-      createAuthContext({ role: "FOUNDER_ADMIN" })
+      founder
     );
 
     await user.click(screen.getByRole("button", { name: /search/i }));

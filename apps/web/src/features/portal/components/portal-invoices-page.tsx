@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { listPortalInvoices } from "../api/portal-api";
 import { portalKeys } from "../api/query-keys";
+import { queryErrorMessage } from "@/lib/api/query-error";
 import { MoneyText } from "./money-text";
 
 export function PortalInvoicesPage() {
@@ -37,9 +38,11 @@ export function PortalInvoicesPage() {
       )}
 
       {isError && (
-        <Alert variant="danger" title="Service Unavailable" data-testid="portal-invoices-error">
-          {(error as Error)?.message || "Invoices service is currently unavailable."}
-        </Alert>
+        <div data-testid="portal-invoices-error">
+          <Alert tone="danger" title="Service Unavailable">
+            {queryErrorMessage(error)}
+          </Alert>
+        </div>
       )}
 
       {data && data.items.length === 0 && (

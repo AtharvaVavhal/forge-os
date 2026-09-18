@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { ToastProvider, useToast } from "@/components/overlays/toast";
 import { logoutPortal } from "../api/portal-api";
 import { usePortalSession } from "../session/portal-session-context";
 
@@ -16,9 +17,18 @@ const NAV_ITEMS = [
 ];
 
 export function PortalShell({ children }: { children: ReactNode }) {
+  return (
+    <ToastProvider>
+      <PortalShellInner>{children}</PortalShellInner>
+    </ToastProvider>
+  );
+}
+
+function PortalShellInner({ children }: { children: ReactNode }) {
   const { clientUser } = usePortalSession();
   const pathname = usePathname();
   const router = useRouter();
+  const { pushToast } = useToast();
   const [loggingOut, setLoggingOut] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -26,11 +36,15 @@ export function PortalShell({ children }: { children: ReactNode }) {
     setLoggingOut(true);
     try {
       await logoutPortal();
-    } catch {
-      // Regardless of error, redirect to portal login
-    } finally {
       router.push("/portal/login");
       router.refresh();
+    } catch {
+      setLoggingOut(false);
+      pushToast({
+        title: "Sign-out failed",
+        description: "Your session may still be active. Try again.",
+        tone: "danger",
+      });
     }
   };
 

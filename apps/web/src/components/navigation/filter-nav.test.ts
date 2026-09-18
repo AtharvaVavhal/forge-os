@@ -4,20 +4,28 @@ import { filterNavTree, isNavItemVisible } from "./filter-nav";
 import { NAV_TREE } from "./nav-tree";
 
 describe("RBAC-aware navigation", () => {
-  it("hides finance and roles from a team member when permissions are absent", () => {
+  it("fails closed on permission-gated items when permissions are absent", () => {
     const tree = filterNavTree(createAuthContext({ role: "TEAM_MEMBER" }));
     const hrefs = tree.flatMap((group) => group.items.map((item) => item.href));
 
     expect(hrefs).toContain("/dashboard");
-    expect(hrefs).toContain("/crm/leads");
-    expect(hrefs).toContain("/team/workload");
+    expect(hrefs).toContain("/settings/organization");
+    expect(hrefs).toContain("/settings/profile");
+    // Permission-gated destinations stay hidden until the backend sends permissions.
+    expect(hrefs).not.toContain("/crm/leads");
     expect(hrefs).not.toContain("/finance/invoices");
+    expect(hrefs).not.toContain("/team/workload");
     expect(hrefs).not.toContain("/settings/roles");
     expect(hrefs).not.toContain("/settings/audit-log");
   });
 
-  it("shows finance to a finance role via visibleTo", () => {
-    const tree = filterNavTree(createAuthContext({ role: "FINANCE" }));
+  it("shows finance when the backend grants finance permissions", () => {
+    const tree = filterNavTree(
+      createAuthContext({
+        role: "FINANCE",
+        permissions: ["finance.read", "forge_fund.read", "audit.read"],
+      })
+    );
     const hrefs = tree.flatMap((group) => group.items.map((item) => item.href));
     expect(hrefs).toContain("/finance/invoices");
     expect(hrefs).toContain("/finance/forge-fund");

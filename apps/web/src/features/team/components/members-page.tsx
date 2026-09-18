@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/overlays/toast";
 import { Can } from "@/features/auth/authorization/can";
+import { useAuthorization } from "@/features/auth/authorization/authorization-context";
 import { USER_ROLES, type UserRole } from "@forge/types";
 import { queryErrorMessage } from "@/lib/api/query-error";
 import { FormActions, PageHeader } from "@/features/crm/components/page-chrome";
@@ -33,6 +34,7 @@ export function MembersPage() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
+  const { role } = useAuthorization();
   const filters = useMemo(() => ({ page, pageSize: 25, sort: "createdAt:desc" }), [page]);
 
   const list = useQuery({
@@ -109,6 +111,7 @@ export function MembersPage() {
       <Drawer open={inviteOpen} onClose={() => setInviteOpen(false)} title="Invite teammate">
         <InviteFields
           pending={inviteMutation.isPending}
+          callerRole={role}
           onCancel={() => setInviteOpen(false)}
           onSubmit={(values) => inviteMutation.mutate(values)}
         />
@@ -121,12 +124,17 @@ function InviteFields({
   pending,
   onCancel,
   onSubmit,
+  callerRole,
 }: {
   pending: boolean;
   onCancel: () => void;
   onSubmit: (values: { email: string; userRole: UserRole }) => void;
+  callerRole: UserRole;
 }) {
   const [error, setError] = useState<string | undefined>();
+  const inviteableRoles = USER_ROLES.filter(
+    (role) => role !== "FOUNDER_ADMIN" || callerRole === "FOUNDER_ADMIN"
+  );
   return (
     <form
       className="flex flex-col gap-4"
@@ -139,6 +147,10 @@ function InviteFields({
         });
         if (!parsed.success) {
           setError(parsed.error.issues[0]?.message);
+          return;
+        }
+        if (parsed.data.userRole === "FOUNDER_ADMIN" && callerRole !== "FOUNDER_ADMIN") {
+          setError("Only a founder admin can invite another founder admin.");
           return;
         }
         setError(undefined);
@@ -157,10 +169,10 @@ function InviteFields({
         id="invite-role"
         label="Role"
         required
-        hint="TEAM invitations set UserRole. There is no Role table or permission-matrix editor."
+        hint="TEAM invitations set UserRole. There is no Role table or permission-matrix editor. Backend still authorizes the invite."
       >
         <Select id="invite-role" name="userRole" defaultValue="TEAM_MEMBER">
-          {USER_ROLES.map((role) => (
+          {inviteableRoles.map((role) => (
             <option key={role} value={role}>
               {enumLabel(role)}
             </option>

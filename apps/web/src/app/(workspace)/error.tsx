@@ -1,7 +1,6 @@
 "use client";
 
 export default function WorkspaceError({
-  error,
   reset,
 }: {
   error: Error & { digest?: string };
@@ -13,7 +12,7 @@ export default function WorkspaceError({
         Workspace unavailable
       </p>
       <p className="font-display max-w-md text-[length:var(--text-body-size)] text-ink/80">
-        {error.message || "The workspace couldn’t load. Your session may still be valid — try again."}
+        The workspace couldn’t load. Your session may still be valid — try again.
       </p>
       <button
         type="button"

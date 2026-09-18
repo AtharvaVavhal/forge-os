@@ -11,12 +11,18 @@
 const DEFAULT_API_ORIGIN = "http://localhost:4000";
 const API_PREFIX = "/api/v1";
 
-export function getServerApiBaseUrl(): string {
-  const fromEnv = process.env.NEXT_PUBLIC_API_BASE_URL;
+function requireProductionApiBase(fromEnv: string | undefined): string {
   if (fromEnv && /^https?:\/\//.test(fromEnv)) {
     return fromEnv.replace(/\/$/, "");
   }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("NEXT_PUBLIC_API_BASE_URL must be set to an absolute URL in production.");
+  }
   return `${DEFAULT_API_ORIGIN}${API_PREFIX}`;
+}
+
+export function getServerApiBaseUrl(): string {
+  return requireProductionApiBase(process.env.NEXT_PUBLIC_API_BASE_URL);
 }
 
 export function getApiOrigin(): string {
@@ -24,6 +30,9 @@ export function getApiOrigin(): string {
   try {
     return new URL(base).origin;
   } catch {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("NEXT_PUBLIC_API_BASE_URL must be a valid absolute URL in production.");
+    }
     return DEFAULT_API_ORIGIN;
   }
 }

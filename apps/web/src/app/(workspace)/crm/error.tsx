@@ -4,7 +4,6 @@ import { Alert } from "@/components/feedback/alert";
 import { Button } from "@/components/ui/button";
 
 export default function CrmError({
-  error,
   reset,
 }: {
   error: Error & { digest?: string };
@@ -13,7 +12,7 @@ export default function CrmError({
   return (
     <div className="flex max-w-lg flex-col gap-4">
       <Alert tone="danger" title="CRM couldn’t load">
-        {error.message || "This CRM view failed. Try again."}
+        This CRM view failed. Try again.
       </Alert>
       <Button onClick={reset}>Try again</Button>
     </div>

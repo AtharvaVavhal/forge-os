@@ -9,6 +9,8 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getPortalDocumentDownloadUrl, listPortalDocuments } from "../api/portal-api";
 import { portalKeys } from "../api/query-keys";
+import { queryErrorMessage } from "@/lib/api/query-error";
+import { openTrustedHttpsUrl } from "@/lib/security/safe-url";
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return "0 B";
@@ -31,13 +33,16 @@ export function PortalDocumentsPage() {
     setDownloadError(null);
     try {
       const res = await getPortalDocumentDownloadUrl(id);
-      if (res?.url) {
-        window.open(res.url, "_blank", "noopener,noreferrer");
-      } else {
-        setDownloadError("Download link could not be generated. Please try again.");
+      if (res?.url && openTrustedHttpsUrl(res.url)) {
+        return;
       }
+      setDownloadError(
+        res?.url
+          ? "Download link was not a trusted HTTPS URL."
+          : "Download link could not be generated. Please try again."
+      );
     } catch (err) {
-      setDownloadError((err as Error)?.message || "Failed to download document.");
+      setDownloadError(queryErrorMessage(err));
     } finally {
       setDownloadingId(null);
     }
@@ -55,9 +60,11 @@ export function PortalDocumentsPage() {
       </div>
 
       {downloadError && (
-        <Alert variant="danger" title="Download Error" data-testid="portal-document-download-error">
-          {downloadError}
-        </Alert>
+        <div data-testid="portal-document-download-error">
+          <Alert tone="danger" title="Download Error">
+            {downloadError}
+          </Alert>
+        </div>
       )}
 
       {isLoading && (
@@ -69,9 +76,11 @@ export function PortalDocumentsPage() {
       )}
 
       {isError && (
-        <Alert variant="danger" title="Service Unavailable" data-testid="portal-documents-error">
-          {(error as Error)?.message || "Documents service is currently unavailable."}
-        </Alert>
+        <div data-testid="portal-documents-error">
+          <Alert tone="danger" title="Service Unavailable">
+            {queryErrorMessage(error)}
+          </Alert>
+        </div>
       )}
 
       {data && data.items.length === 0 && (
@@ -109,7 +118,7 @@ export function PortalDocumentsPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <Button
-                      variant="outline"
+                      variant="secondary"
                       size="sm"
                       onClick={() => handleDownload(doc.id)}
                       disabled={downloadingId === doc.id}

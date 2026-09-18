@@ -7,9 +7,11 @@ import { createAuthContext, renderWithShell } from "@/test/test-utils";
 import { navigationState } from "@/test/setup";
 
 describe("Sidebar", () => {
+  const founder = createAuthContext({ role: "FOUNDER_ADMIN", permissions: ["*"] });
+
   it("renders grouped workspace navigation", () => {
     navigationState.pathname = "/dashboard";
-    renderWithShell(<Sidebar />, createAuthContext({ role: "FOUNDER_ADMIN" }));
+    renderWithShell(<Sidebar />, founder);
 
     const nav = screen.getByRole("navigation", { name: "Workspace" });
     expect(within(nav).getByRole("link", { name: /dashboard/i })).toHaveAttribute("href", "/dashboard");
@@ -21,7 +23,7 @@ describe("Sidebar", () => {
 
   it("marks the active route", () => {
     navigationState.pathname = "/crm/leads";
-    renderWithShell(<Sidebar />, createAuthContext({ role: "FOUNDER_ADMIN" }));
+    renderWithShell(<Sidebar />, founder);
 
     expect(screen.getByRole("link", { name: /leads/i })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: /dashboard/i })).not.toHaveAttribute("aria-current");
@@ -29,7 +31,7 @@ describe("Sidebar", () => {
 
   it("marks a nested CRM detail route without activating Projects", () => {
     navigationState.pathname = "/crm/leads/lead-1";
-    renderWithShell(<Sidebar />, createAuthContext({ role: "FOUNDER_ADMIN" }));
+    renderWithShell(<Sidebar />, founder);
 
     expect(screen.getByRole("link", { name: /leads/i })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: /^projects$/i })).not.toHaveAttribute("aria-current");
@@ -49,7 +51,7 @@ describe("Sidebar", () => {
         dispatchEvent: () => false,
       }) as MediaQueryList;
 
-    renderWithShell(<Sidebar />, createAuthContext({ role: "FOUNDER_ADMIN" }));
+    renderWithShell(<Sidebar />, founder);
 
     const aside = screen.getByRole("complementary", { name: "Workspace navigation" });
     await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
@@ -62,7 +64,7 @@ describe("Sidebar", () => {
       <WorkspaceShell>
         <p>Content</p>
       </WorkspaceShell>,
-      createAuthContext({ role: "FOUNDER_ADMIN" })
+      founder
     );
 
     expect(screen.getAllByRole("navigation", { name: "Workspace" })).toHaveLength(1);

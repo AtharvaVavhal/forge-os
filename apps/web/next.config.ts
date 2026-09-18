@@ -1,12 +1,50 @@
 import type { NextConfig } from "next";
 
+/**
+ * Resolve API origin for rewrites/CSP. Prefer NEXT_PUBLIC_API_BASE_URL.
+ * Soft-fallback to localhost so `next build` can evaluate config; runtime
+ * server requests still fail closed via `getServerApiBaseUrl()` in production.
+ */
 function apiOrigin(): string {
-  const base = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000/api/v1";
-  try {
-    return new URL(base).origin;
-  } catch {
-    return "http://localhost:4000";
+  const base = process.env.NEXT_PUBLIC_API_BASE_URL;
+  if (base) {
+    try {
+      return new URL(base).origin;
+    } catch {
+      // fall through
+    }
   }
+  return "http://localhost:4000";
+}
+
+function securityHeaders(): { key: string; value: string }[] {
+  return [
+    { key: "X-Content-Type-Options", value: "nosniff" },
+    { key: "X-Frame-Options", value: "DENY" },
+    { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+    {
+      key: "Permissions-Policy",
+      value: "camera=(), microphone=(), geolocation=(), payment=(self)",
+    },
+    {
+      key: "Content-Security-Policy",
+      value: [
+        "default-src 'self'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+        "object-src 'none'",
+        // Next.js App Router typically needs inline/eval; Razorpay Checkout needs its CDN.
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob: https:",
+        "font-src 'self' data:",
+        `connect-src 'self' ${apiOrigin()} https://api.razorpay.com https://lumberjack.razorpay.com https://accounts.google.com`,
+        "frame-src https://api.razorpay.com https://checkout.razorpay.com https://accounts.google.com",
+        "worker-src 'self' blob:",
+      ].join("; "),
+    },
+  ];
 }
 
 const nextConfig: NextConfig = {
@@ -25,6 +63,24 @@ const nextConfig: NextConfig = {
       {
         source: "/api/v1/:path*",
         destination: `${apiOrigin()}/api/v1/:path*`,
+      },
+    ];
+  },
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: securityHeaders(),
+      },
+      {
+        // Password-reset token may appear in ?token= — avoid leaking via Referer.
+        source: "/reset-password",
+        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+      },
+      {
+        // Invitation token lives in the path — avoid leaking via Referer.
+        source: "/invite/:path*",
+        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
       },
     ];
   },

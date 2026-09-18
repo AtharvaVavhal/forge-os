@@ -196,14 +196,23 @@ export function parseSearchHits(payload: unknown): SearchHit[] | null {
 export function parseSignedUrl(payload: unknown): string | null {
   const data = isRecord(unwrapData(payload)) ? (unwrapData(payload) as Record<string, unknown>) : isRecord(payload) ? payload : null;
   if (!data) return null;
-  return (
+  const raw =
     asString(data.url) ??
     asString(data.downloadUrl) ??
     asString(data.download_url) ??
     asString(data.uploadUrl) ??
     asString(data.upload_url) ??
-    null
-  );
+    null;
+  if (!raw) return null;
+  // Scheme check only here; openTrustedHttpsUrl enforces prod HTTPS + localhost-http-dev.
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+    if (parsed.protocol === "http:" && process.env.NODE_ENV === "production") return null;
+    return raw;
+  } catch {
+    return null;
+  }
 }
 
 export function parsePresign(payload: unknown): { url: string; storageKey: string | null; method: string } | null {
