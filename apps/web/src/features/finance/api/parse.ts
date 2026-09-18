@@ -27,6 +27,7 @@ import {
   type OffsetList,
   type Payment,
   type Refund,
+  type TaxRate,
 } from "./types";
 
 function inSet<T extends string>(value: unknown, allowed: readonly T[]): T | null {
@@ -249,6 +250,36 @@ export function parseForgeFundBalance(payload: unknown): string | null {
   return asMoneyString(data.balance) ?? asMoneyString(data.amount) ?? asMoneyString(data.total);
 }
 
+export function parseTaxRate(value: unknown): TaxRate | null {
+  const node = isRecord(unwrapData(value)) ? (unwrapData(value) as Record<string, unknown>) : null;
+  if (!node) return null;
+  const id = asString(node.id);
+  const hsnSacCode = asString(readField(node, "hsnSacCode", "hsn_sac_code"));
+  const description = asString(node.description);
+  if (!id || !hsnSacCode || !description) return null;
+  return {
+    id,
+    organizationId: asString(readField(node, "organizationId", "organization_id")) ?? null,
+    hsnSacCode,
+    description,
+    cgstRate:
+      asMoneyString(readField(node, "cgstRate", "cgst_rate")) ??
+      asString(readField(node, "cgstRate", "cgst_rate")) ??
+      null,
+    sgstRate:
+      asMoneyString(readField(node, "sgstRate", "sgst_rate")) ??
+      asString(readField(node, "sgstRate", "sgst_rate")) ??
+      null,
+    igstRate:
+      asMoneyString(readField(node, "igstRate", "igst_rate")) ??
+      asString(readField(node, "igstRate", "igst_rate")) ??
+      null,
+    effectiveFrom: asIsoDate(readField(node, "effectiveFrom", "effective_from")),
+    effectiveTo: asIsoDate(readField(node, "effectiveTo", "effective_to")),
+    createdAt: asIsoDate(readField(node, "createdAt", "created_at")),
+  };
+}
+
 function toOffsetList<T>(parsed: { items: T[]; pagination: ParsedPagination }): OffsetList<T> {
   if (parsed.pagination.mode === "offset") {
     return {
@@ -288,4 +319,8 @@ export function parseExpenseList(payload: unknown): OffsetList<Expense> | null {
 
 export function parseForgeFundEntryList(payload: unknown): OffsetList<ForgeFundEntry> | null {
   return parseNestedList(payload, parseForgeFundEntry);
+}
+
+export function parseTaxRateList(payload: unknown): OffsetList<TaxRate> | null {
+  return parseNestedList(payload, parseTaxRate);
 }

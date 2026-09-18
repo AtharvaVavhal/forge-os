@@ -19,6 +19,8 @@ export const portalPaths = {
   acceptProposal: (id: string) => `/portal/proposals/${id}/accept`,
   invoices: "/portal/invoices",
   invoice: (id: string) => `/portal/invoices/${id}`,
+  invoicePay: (id: string) => `/portal/invoices/${id}/pay`,
   documents: "/portal/documents",
   documentDownloadUrl: (id: string) => `/portal/documents/${id}/download-url`,
+  supportTickets: "/portal/support-tickets",
 } as const;

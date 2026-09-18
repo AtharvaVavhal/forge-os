@@ -76,14 +76,14 @@ export function ProjectsPage() {
   const router = useRouter();
   const { user } = useAuthorization();
 
-  const filters = useMemo(() => ({ page, pageSize: 25, sort: "createdAt:desc" }), [page]);
+  const filters = useMemo(() => ({ page, pageSize: 25 }), [page]);
   const list = useQuery({
     queryKey: projectKeys.list(filters),
     queryFn: () => listProjects(filters),
   });
   const companies = useQuery({
     queryKey: crmKeys.companies.list({ page: 1, pageSize: 100 }),
-    queryFn: () => listCompanies({ page: 1, pageSize: 100, sort: "createdAt:desc" }),
+    queryFn: () => listCompanies({ page: 1, pageSize: 100 }),
   });
 
   const createMutation = useMutation({
@@ -177,7 +177,7 @@ export function ProjectDetailPage({ id }: { id: string }) {
   });
   const companies = useQuery({
     queryKey: crmKeys.companies.list({ page: 1, pageSize: 100 }),
-    queryFn: () => listCompanies({ page: 1, pageSize: 100, sort: "createdAt:desc" }),
+    queryFn: () => listCompanies({ page: 1, pageSize: 100 }),
   });
   const milestones = useQuery({
     queryKey: projectKeys.milestones(id),

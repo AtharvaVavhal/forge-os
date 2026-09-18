@@ -46,10 +46,20 @@ export const dealFormSchema = z.object({
   contactId: optionalText,
 });
 
+/** Lead → Deal convert body (matches ConvertLeadDto: title + estimatedValue). */
+export const convertLeadFormSchema = z.object({
+  title: z.string().trim().min(1, "Enter a deal title."),
+  estimatedValue: z
+    .string()
+    .trim()
+    .regex(/^\d{1,10}\.\d{2}$/, "Enter an amount with exactly two decimal places, e.g. 12000.00."),
+});
+
 export type CompanyFormValues = z.infer<typeof companyFormSchema>;
 export type ContactFormValues = z.infer<typeof contactFormSchema>;
 export type LeadFormValues = z.infer<typeof leadFormSchema>;
 export type DealFormValues = z.infer<typeof dealFormSchema>;
+export type ConvertLeadFormValues = z.infer<typeof convertLeadFormSchema>;
 
 export function tagsFromInput(value: string | undefined): string[] | undefined {
   if (!value?.trim()) return undefined;

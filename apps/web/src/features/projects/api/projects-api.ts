@@ -33,9 +33,16 @@ function requireParsed<T>(value: T | null, label: string): T {
   return value;
 }
 
-export async function listProjects(query: { page?: number; pageSize?: number; sort?: string } = {}) {
+export async function listProjects(
+  query: { page?: number; pageSize?: number; companyId?: string; q?: string } = {}
+) {
   const payload = await apiClient.get<unknown>(projectPaths.projects, {
-    query: { page: query.page, pageSize: query.pageSize, sort: query.sort },
+    query: {
+      page: query.page,
+      pageSize: query.pageSize,
+      companyId: query.companyId,
+      q: query.q,
+    },
   });
   return requireParsed(parseProjectList(payload), "project list");
 }

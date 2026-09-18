@@ -21,23 +21,23 @@ export function PortalOverviewPage() {
   const clientUser = usePortalClientUser();
 
   const projectsQuery = useQuery({
-    queryKey: portalKeys.projects.list({ limit: 5 }),
-    queryFn: () => listPortalProjects({ limit: 5 }),
+    queryKey: portalKeys.projects.list({ page: 1, pageSize: 5 }),
+    queryFn: () => listPortalProjects({ page: 1, pageSize: 5 }),
   });
 
   const proposalsQuery = useQuery({
-    queryKey: portalKeys.proposals.list({ limit: 5 }),
-    queryFn: () => listPortalProposals({ limit: 5 }),
+    queryKey: portalKeys.proposals.list({ page: 1, pageSize: 5 }),
+    queryFn: () => listPortalProposals({ page: 1, pageSize: 5 }),
   });
 
   const invoicesQuery = useQuery({
-    queryKey: portalKeys.invoices.list({ limit: 5 }),
-    queryFn: () => listPortalInvoices({ limit: 5 }),
+    queryKey: portalKeys.invoices.list({ page: 1, pageSize: 5 }),
+    queryFn: () => listPortalInvoices({ page: 1, pageSize: 5 }),
   });
 
   const documentsQuery = useQuery({
-    queryKey: portalKeys.documents.list({ limit: 5 }),
-    queryFn: () => listPortalDocuments({ limit: 5 }),
+    queryKey: portalKeys.documents.list({ page: 1, pageSize: 5 }),
+    queryFn: () => listPortalDocuments({ page: 1, pageSize: 5 }),
   });
 
   return (
@@ -76,9 +76,11 @@ export function PortalOverviewPage() {
           )}
 
           {projectsQuery.isError && (
-            <Alert variant="danger" title="Service Unavailable" data-testid="portal-projects-error">
-              Projects service is currently unavailable.
-            </Alert>
+            <div data-testid="portal-projects-error">
+              <Alert tone="danger" title="Service Unavailable">
+                Projects service is currently unavailable.
+              </Alert>
+            </div>
           )}
 
           {projectsQuery.isSuccess && projectsQuery.data.items.length === 0 && (
@@ -133,9 +135,11 @@ export function PortalOverviewPage() {
           )}
 
           {proposalsQuery.isError && (
-            <Alert variant="danger" title="Service Unavailable" data-testid="portal-proposals-error">
-              Proposals service is currently unavailable.
-            </Alert>
+            <div data-testid="portal-proposals-error">
+              <Alert tone="danger" title="Service Unavailable">
+                Proposals service is currently unavailable.
+              </Alert>
+            </div>
           )}
 
           {proposalsQuery.isSuccess && proposalsQuery.data.items.length === 0 && (
@@ -165,7 +169,7 @@ export function PortalOverviewPage() {
                     <PortalStatusBadge status={proposal.status} />
                     {(proposal.status === "SENT" || proposal.status === "VIEWED") && (
                       <Link href={`/portal/proposals/${proposal.id}`}>
-                        <Button size="sm" variant="outline" className="text-xs h-7 px-2">
+                        <Button size="sm" variant="secondary" className="text-xs h-7 px-2">
                           Review
                         </Button>
                       </Link>
@@ -199,9 +203,11 @@ export function PortalOverviewPage() {
           )}
 
           {invoicesQuery.isError && (
-            <Alert variant="danger" title="Service Unavailable" data-testid="portal-invoices-error">
-              Invoices service is currently unavailable.
-            </Alert>
+            <div data-testid="portal-invoices-error">
+              <Alert tone="danger" title="Service Unavailable">
+                Invoices service is currently unavailable.
+              </Alert>
+            </div>
           )}
 
           {invoicesQuery.isSuccess && invoicesQuery.data.items.length === 0 && (
@@ -257,9 +263,11 @@ export function PortalOverviewPage() {
           )}
 
           {documentsQuery.isError && (
-            <Alert variant="danger" title="Service Unavailable" data-testid="portal-documents-error">
-              Documents service is currently unavailable.
-            </Alert>
+            <div data-testid="portal-documents-error">
+              <Alert tone="danger" title="Service Unavailable">
+                Documents service is currently unavailable.
+              </Alert>
+            </div>
           )}
 
           {documentsQuery.isSuccess && documentsQuery.data.items.length === 0 && (
@@ -281,7 +289,7 @@ export function PortalOverviewPage() {
                     </div>
                   </div>
                   <Link href="/portal/documents">
-                    <Button size="sm" variant="outline" className="text-xs h-7 px-2">
+                    <Button size="sm" variant="secondary" className="text-xs h-7 px-2">
                       View
                     </Button>
                   </Link>

@@ -161,6 +161,19 @@ export interface ForgeFundEntry {
   createdAt: string | null;
 }
 
+export interface TaxRate {
+  id: string;
+  organizationId: string | null;
+  hsnSacCode: string;
+  description: string;
+  cgstRate: string | null;
+  sgstRate: string | null;
+  igstRate: string | null;
+  effectiveFrom: string | null;
+  effectiveTo: string | null;
+  createdAt: string | null;
+}
+
 export interface OffsetList<T> {
   items: T[];
   page: number;

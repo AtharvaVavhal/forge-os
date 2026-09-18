@@ -26,7 +26,7 @@ function ProjectPicker({
   children: (projectId: string) => ReactNode;
 }) {
   const [projectId, setProjectId] = useState("");
-  const filters = useMemo(() => ({ page: 1, pageSize: 100, sort: "createdAt:desc" }), []);
+  const filters = useMemo(() => ({ page: 1, pageSize: 100 }), []);
   const list = useQuery({
     queryKey: projectKeys.list(filters),
     queryFn: () => listProjects(filters),

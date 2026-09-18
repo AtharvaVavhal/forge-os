@@ -44,7 +44,7 @@ import { nextLeadActions } from "../api/lifecycle";
 import { crmKeys } from "../api/query-keys";
 import { LEAD_SOURCES, LEAD_STATUSES, type LeadSource, type LeadStatus } from "../api/types";
 import { enumLabel, formatTimestamp } from "../format";
-import { LeadFields } from "./crm-forms";
+import { LeadFields, ConvertLeadFields } from "./crm-forms";
 import { FactList, PageHeader } from "./page-chrome";
 import { ResourceQueryState } from "./resource-query-state";
 import { ErrorState, LoadingState } from "@/components/data-display/data-states";
@@ -75,7 +75,6 @@ export function LeadsPage() {
       q: debouncedQ || undefined,
       status: status || undefined,
       source: source || undefined,
-      sort: "createdAt:desc",
     }),
     [page, debouncedQ, status, source]
   );
@@ -86,7 +85,7 @@ export function LeadsPage() {
   });
   const companies = useQuery({
     queryKey: crmKeys.companies.list({ page: 1, pageSize: 100 }),
-    queryFn: () => listCompanies({ page: 1, pageSize: 100, sort: "createdAt:desc" }),
+    queryFn: () => listCompanies({ page: 1, pageSize: 100 }),
   });
   const contacts = useQuery({
     queryKey: crmKeys.contacts.list({ limit: 100 }),
@@ -225,7 +224,8 @@ export function LeadsPage() {
 
 export function LeadDetailPage({ id }: { id: string }) {
   const [editing, setEditing] = useState(false);
-  const [confirm, setConfirm] = useState<"CONVERT" | "DISQUALIFY" | null>(null);
+  const [convertOpen, setConvertOpen] = useState(false);
+  const [confirm, setConfirm] = useState<"DISQUALIFY" | null>(null);
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
   const router = useRouter();
@@ -236,7 +236,7 @@ export function LeadDetailPage({ id }: { id: string }) {
   });
   const companies = useQuery({
     queryKey: crmKeys.companies.list({ page: 1, pageSize: 100 }),
-    queryFn: () => listCompanies({ page: 1, pageSize: 100, sort: "createdAt:desc" }),
+    queryFn: () => listCompanies({ page: 1, pageSize: 100 }),
   });
   const contacts = useQuery({
     queryKey: crmKeys.contacts.list({ limit: 100 }),
@@ -266,12 +266,12 @@ export function LeadDetailPage({ id }: { id: string }) {
   });
 
   const convertMutation = useMutation({
-    mutationFn: () => convertLead(id),
+    mutationFn: (body: { title: string; estimatedValue: string }) => convertLead(id, body),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: crmKeys.leads.all });
       queryClient.invalidateQueries({ queryKey: crmKeys.deals.all });
       queryClient.invalidateQueries({ queryKey: crmKeys.leads.detail(id) });
-      setConfirm(null);
+      setConvertOpen(false);
       pushToast({ title: "Lead converted", tone: "success" });
       router.push(`/crm/deals/${result.deal.id}`);
     },
@@ -326,7 +326,7 @@ export function LeadDetailPage({ id }: { id: string }) {
               </Button>
             ) : null}
             {actions.includes("CONVERT") ? (
-              <Button onClick={() => setConfirm("CONVERT")}>Convert to deal</Button>
+              <Button onClick={() => setConvertOpen(true)}>Convert to deal</Button>
             ) : null}
             {actions.includes("DISQUALIFY") ? (
               <Button variant="destructive" onClick={() => setConfirm("DISQUALIFY")}>
@@ -398,15 +398,23 @@ export function LeadDetailPage({ id }: { id: string }) {
         />
       </Drawer>
 
-      <ConfirmationDialog
-        open={confirm === "CONVERT"}
-        onClose={() => setConfirm(null)}
-        onConfirm={() => convertMutation.mutate()}
-        title="Convert this lead?"
-        description="The backend will create a Deal and mark this lead converted. This cannot be done by changing status locally."
-        confirmLabel="Confirm conversion"
-        pending={convertMutation.isPending}
-      />
+      <Drawer
+        open={convertOpen}
+        onClose={() => setConvertOpen(false)}
+        title="Convert lead to deal"
+      >
+        <p className="type-body mb-4 text-steel">
+          The backend will create a Deal and mark this lead converted. Provide the deal title and
+          estimated value required by the API.
+        </p>
+        <ConvertLeadFields
+          defaultTitle={lead.company?.name ?? lead.contact?.name ?? undefined}
+          pending={convertMutation.isPending}
+          onCancel={() => setConvertOpen(false)}
+          onSubmit={(values) => convertMutation.mutate(values)}
+        />
+      </Drawer>
+
       <ConfirmationDialog
         open={confirm === "DISQUALIFY"}
         onClose={() => setConfirm(null)}

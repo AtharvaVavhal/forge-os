@@ -57,8 +57,8 @@ export function ContactsPage() {
     queryFn: () => listContacts({ cursor, limit: 25 }),
   });
   const companies = useQuery({
-    queryKey: crmKeys.companies.list({ page: 1, pageSize: 100, sort: "createdAt:desc" }),
-    queryFn: () => listCompanies({ page: 1, pageSize: 100, sort: "createdAt:desc" }),
+    queryKey: crmKeys.companies.list({ page: 1, pageSize: 100 }),
+    queryFn: () => listCompanies({ page: 1, pageSize: 100 }),
   });
 
   const createMutation = useMutation({
@@ -220,8 +220,8 @@ export function ContactDetailPage({ id }: { id: string }) {
     queryFn: () => getContact(id),
   });
   const companies = useQuery({
-    queryKey: crmKeys.companies.list({ page: 1, pageSize: 100, sort: "createdAt:desc" }),
-    queryFn: () => listCompanies({ page: 1, pageSize: 100, sort: "createdAt:desc" }),
+    queryKey: crmKeys.companies.list({ page: 1, pageSize: 100 }),
+    queryFn: () => listCompanies({ page: 1, pageSize: 100 }),
   });
 
   const updateMutation = useMutation({

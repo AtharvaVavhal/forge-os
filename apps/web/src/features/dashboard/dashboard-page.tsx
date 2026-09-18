@@ -141,8 +141,8 @@ export function DashboardPage() {
 
 function ProjectsWidget() {
   const query = useQuery({
-    queryKey: crmKeys.projects.list({ page: 1, pageSize: 10, sort: "createdAt:desc" }),
-    queryFn: () => listProjects({ page: 1, pageSize: 10, sort: "createdAt:desc" }),
+    queryKey: crmKeys.projects.list({ page: 1, pageSize: 10 }),
+    queryFn: () => listProjects({ page: 1, pageSize: 10 }),
   });
 
   return (

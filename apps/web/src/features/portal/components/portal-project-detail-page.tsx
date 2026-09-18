@@ -54,9 +54,11 @@ export function PortalProjectDetailPage({ id }: { id: string }) {
       )}
 
       {projectQuery.isError && (
-        <Alert variant="danger" title="Unavailable" data-testid="portal-project-error">
-          {(projectQuery.error as Error)?.message || "Project could not be loaded."}
-        </Alert>
+        <div data-testid="portal-project-error">
+          <Alert tone="danger" title="Unavailable">
+            {(projectQuery.error as Error)?.message || "Project could not be loaded."}
+          </Alert>
+        </div>
       )}
 
       {project && (
@@ -92,7 +94,7 @@ export function PortalProjectDetailPage({ id }: { id: string }) {
               { id: "milestones", label: "Milestones" },
               { id: "handover", label: "Handover Checklist" },
             ]}
-            activeTab={activeTab}
+            value={activeTab}
             onChange={setActiveTab}
           />
 
@@ -116,7 +118,7 @@ export function PortalProjectDetailPage({ id }: { id: string }) {
               )}
 
               {milestonesQuery.isError && (
-                <Alert variant="danger" title="Unavailable">
+                <Alert tone="danger" title="Unavailable">
                   Milestones are currently unavailable.
                 </Alert>
               )}
@@ -174,7 +176,7 @@ export function PortalProjectDetailPage({ id }: { id: string }) {
               )}
 
               {handoverQuery.isError && (
-                <Alert variant="danger" title="Unavailable">
+                <Alert tone="danger" title="Unavailable">
                   Handover summary is currently unavailable.
                 </Alert>
               )}

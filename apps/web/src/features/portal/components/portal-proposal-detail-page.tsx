@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Alert } from "@/components/feedback/alert";
@@ -13,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmationDialog } from "@/components/overlays/modal";
 import { acceptPortalProposal, getPortalProposal } from "../api/portal-api";
 import { portalKeys } from "../api/query-keys";
+import { queryErrorMessage } from "@/lib/api/query-error";
 import { MoneyText } from "./money-text";
 
 export function PortalProposalDetailPage({ id }: { id: string }) {
@@ -30,8 +30,10 @@ export function PortalProposalDetailPage({ id }: { id: string }) {
     onSuccess: (updated) => {
       setActionError(null);
       setConfirmOpen(false);
-      queryClient.setQueryData(portalKeys.proposals.detail(id), updated);
-      queryClient.invalidateQueries({ queryKey: portalKeys.proposals.all });
+      if (updated) {
+        queryClient.setQueryData(portalKeys.proposals.detail(id), updated);
+      }
+      queryClient.invalidateQueries({ queryKey: portalKeys.proposals.list() });
     },
     onError: (err: Error) => {
       setActionError(err.message || "Failed to accept proposal. Please try again.");
@@ -58,17 +60,21 @@ export function PortalProposalDetailPage({ id }: { id: string }) {
       )}
 
       {isError && (
-        <Alert variant="danger" title="Unavailable" data-testid="portal-proposal-error">
-          {(error as Error)?.message || "Proposal could not be loaded."}
-        </Alert>
+        <div data-testid="portal-proposal-error">
+          <Alert tone="danger" title="Unavailable">
+            {queryErrorMessage(error)}
+          </Alert>
+        </div>
       )}
 
       {proposal && (
         <div className="space-y-6">
           {actionError && (
-            <Alert variant="danger" title="Action Failed" data-testid="portal-proposal-action-error">
-              {actionError}
-            </Alert>
+            <div data-testid="portal-proposal-action-error">
+              <Alert tone="danger" title="Action Failed">
+                {actionError}
+              </Alert>
+            </div>
           )}
 
           {/* Proposal Header */}
@@ -189,8 +195,8 @@ export function PortalProposalDetailPage({ id }: { id: string }) {
         onConfirm={() => acceptMutation.mutate()}
         title="Accept Proposal"
         description={`Are you sure you want to accept Proposal v${proposal?.version}? This action confirms your agreement to the terms and scope.`}
-        confirmLabel={acceptMutation.isPending ? "Accepting…" : "Yes, Accept Proposal"}
-        variant="primary"
+        confirmLabel="Yes, Accept Proposal"
+        pending={acceptMutation.isPending}
       />
     </div>
   );

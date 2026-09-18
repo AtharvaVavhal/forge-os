@@ -26,4 +26,9 @@ export const portalKeys = {
       ["portal", "documents", "list", filters ?? {}] as const,
     downloadUrl: (id: string) => ["portal", "documents", "download-url", id] as const,
   },
+  supportTickets: {
+    all: ["portal", "support-tickets"] as const,
+    list: (filters?: Record<string, string | number | boolean | undefined>) =>
+      ["portal", "support-tickets", "list", filters ?? {}] as const,
+  },
 };

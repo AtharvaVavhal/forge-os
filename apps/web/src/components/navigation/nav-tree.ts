@@ -160,6 +160,14 @@ export const NAV_TREE: NavGroup[] = [
         visibleTo: FINANCE_ROLES,
         permission: "forge_fund.read",
       },
+      {
+        id: "tax-rates",
+        label: "Tax rates",
+        href: "/finance/tax-rates",
+        icon: "invoices",
+        visibleTo: FINANCE_ROLES,
+        permission: "finance.read",
+      },
     ],
   },
   {

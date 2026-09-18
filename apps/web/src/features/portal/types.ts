@@ -207,6 +207,36 @@ export interface PortalSignedDownloadUrl {
   expiresInSeconds?: number;
 }
 
+/** Response from POST /portal/invoices/:id/pay — starts Razorpay checkout only. */
+export interface PortalPayOrder {
+  orderId: string;
+  amount: string;
+  currency: string;
+  keyId: string;
+  paymentId: string;
+}
+
+export const TICKET_STATUSES = [
+  "OPEN",
+  "IN_PROGRESS",
+  "WAITING_ON_CLIENT",
+  "RESOLVED",
+  "CLOSED",
+  "REOPENED",
+] as const;
+export type PortalTicketStatus = (typeof TICKET_STATUSES)[number];
+
+export interface PortalSupportTicket {
+  id: string;
+  subject: string;
+  status: PortalTicketStatus;
+  projectId: string;
+  raisedByClientUserId: string | null;
+  resolvedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
 export interface OffsetList<T> {
   items: T[];
   page: number;

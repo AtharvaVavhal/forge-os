@@ -67,3 +67,26 @@ export const forgeFundEntrySchema = z.object({
   amount: moneyString,
   reason: z.string().trim().min(1, "Enter a reason."),
 });
+
+/** Matches backend `TAX_RATE_REGEX` / `IsTaxRateString` — `\d{1,3}\.\d{2}`. */
+export const taxRatePercentSchema = z
+  .string()
+  .regex(/^\d{1,3}\.\d{2}$/, 'Enter a rate with exactly two decimal places, e.g. "18.00".');
+
+export const createTaxRateFormSchema = z.object({
+  hsnSacCode: z.string().trim().min(1, "Enter HSN/SAC.").max(20),
+  description: z.string().trim().min(1, "Enter a description.").max(500),
+  cgstRate: taxRatePercentSchema,
+  sgstRate: taxRatePercentSchema,
+  igstRate: taxRatePercentSchema,
+  effectiveFrom: z.string().min(1, "Enter an effective-from date."),
+  effectiveTo: optionalText,
+});
+
+export const updateTaxRateFormSchema = z.object({
+  description: z.string().trim().min(1, "Enter a description.").max(500),
+  cgstRate: taxRatePercentSchema,
+  sgstRate: taxRatePercentSchema,
+  igstRate: taxRatePercentSchema,
+  effectiveTo: optionalText,
+});

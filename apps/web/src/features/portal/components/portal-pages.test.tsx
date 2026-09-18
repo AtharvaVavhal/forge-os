@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ApiClientError } from "@forge/api-client";
 import { PortalOverviewPage } from "./portal-overview-page";
 import { PortalProposalsPage } from "./portal-proposals-page";
@@ -10,7 +11,7 @@ import { PortalInvoicesPage } from "./portal-invoices-page";
 import { PortalInvoiceDetailPage } from "./portal-invoice-detail-page";
 import { PortalDocumentsPage } from "./portal-documents-page";
 import * as portalApi from "../api/portal-api";
-import { renderWithPortal, createPortalAuthContext } from "@/test/test-utils";
+import { renderWithPortal } from "@/test/test-utils";
 import type {
   PortalDocument,
   PortalInvoice,
@@ -26,6 +27,10 @@ vi.mock("next/navigation", () => ({
   }),
   usePathname: () => "/portal",
   useSearchParams: () => new URLSearchParams(),
+}));
+
+vi.mock("../lib/razorpay-checkout", () => ({
+  openRazorpayCheckout: vi.fn().mockResolvedValue(undefined),
 }));
 
 describe("Client Portal Pages Suite", () => {
@@ -66,10 +71,10 @@ describe("Client Portal Pages Suite", () => {
     });
 
     it("renders honest error alerts when APIs fail and never collapses to fake zero values", async () => {
-      vi.spyOn(portalApi, "listPortalProjects").mockRejectedValue(new ApiClientError(500, { code: "INTERNAL", message: "Server error" }));
-      vi.spyOn(portalApi, "listPortalProposals").mockRejectedValue(new ApiClientError(404, { code: "NOT_FOUND", message: "Not available" }));
-      vi.spyOn(portalApi, "listPortalInvoices").mockRejectedValue(new ApiClientError(503, { code: "UNAVAILABLE", message: "Service unavailable" }));
-      vi.spyOn(portalApi, "listPortalDocuments").mockRejectedValue(new ApiClientError(500, { code: "INTERNAL", message: "Error" }));
+      vi.spyOn(portalApi, "listPortalProjects").mockRejectedValue(new ApiClientError(500, { code: "INTERNAL", message: "Server error", requestId: "req-1" }));
+      vi.spyOn(portalApi, "listPortalProposals").mockRejectedValue(new ApiClientError(404, { code: "NOT_FOUND", message: "Not available", requestId: "req-2" }));
+      vi.spyOn(portalApi, "listPortalInvoices").mockRejectedValue(new ApiClientError(503, { code: "UNAVAILABLE", message: "Service unavailable", requestId: "req-3" }));
+      vi.spyOn(portalApi, "listPortalDocuments").mockRejectedValue(new ApiClientError(500, { code: "INTERNAL", message: "Error", requestId: "req-4" }));
 
       renderWithPortal(<PortalOverviewPage />);
 
@@ -208,7 +213,7 @@ describe("Client Portal Pages Suite", () => {
 
       renderWithPortal(<PortalProposalDetailPage id="prop-100" />);
 
-      expect(await screen.findByText("Proposal v1")).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: "Proposal v1" })).toBeInTheDocument();
       expect(screen.getByText("Delivery in 6 weeks with two review phases.")).toBeInTheDocument();
       expect(screen.getByText("System Architecture & Design")).toBeInTheDocument();
       expect(screen.getByText("₹75,000.00")).toBeInTheDocument();
@@ -259,12 +264,14 @@ describe("Client Portal Pages Suite", () => {
 
     it("handles 404 / unavailable proposal detail", async () => {
       vi.spyOn(portalApi, "getPortalProposal").mockRejectedValue(
-        new ApiClientError(404, { code: "NOT_FOUND", message: "Proposal not found." })
+        new ApiClientError(404, { code: "NOT_FOUND", message: "Proposal not found.", requestId: "req-prop" })
       );
 
       renderWithPortal(<PortalProposalDetailPage id="prop-missing" />);
 
-      expect(await screen.findByTestId("portal-proposal-error")).toHaveTextContent("Proposal not found.");
+      expect(await screen.findByTestId("portal-proposal-error")).toHaveTextContent(
+        "This record doesn’t exist, or you don’t have access to it."
+      );
     });
   });
 
@@ -328,7 +335,7 @@ describe("Client Portal Pages Suite", () => {
 
       renderWithPortal(<PortalProjectDetailPage id="proj-10" />);
 
-      expect(await screen.findByText("Mobile App MVP")).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: "Mobile App MVP" })).toBeInTheDocument();
       expect(screen.getByText("User Authentication & Profiles")).toBeInTheDocument();
       expect(screen.getByText("Payment Gateway Integration")).toBeInTheDocument();
       expect(screen.getByText("Read-only view")).toBeInTheDocument();
@@ -350,7 +357,7 @@ describe("Client Portal Pages Suite", () => {
 
       renderWithPortal(<PortalProjectDetailPage id="proj-10" />);
 
-      await screen.findByText("Mobile App MVP");
+      await screen.findByRole("heading", { name: "Mobile App MVP" });
       const handoverTab = screen.getByRole("tab", { name: "Handover Checklist" });
       fireEvent.click(handoverTab);
 
@@ -361,7 +368,7 @@ describe("Client Portal Pages Suite", () => {
   });
 
   // ==========================================
-  // 4. INVOICES & NO PAYMENT CHECKOUT
+  // 4. INVOICES & PORTAL PAYMENT
   // ==========================================
   describe("Portal Invoices & Authoritative Amounts", () => {
     const mockInvoice: PortalInvoice = {
@@ -432,7 +439,7 @@ describe("Client Portal Pages Suite", () => {
 
       renderWithPortal(<PortalInvoiceDetailPage id="inv-200" />);
 
-      expect(await screen.findByText("INV-2026-0042")).toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: "INV-2026-0042" })).toBeInTheDocument();
       expect(screen.getByText("Acme Enterprise Pvt Ltd")).toBeInTheDocument();
       expect(screen.getByText("GSTIN: 27AAPCA1234A1Z5")).toBeInTheDocument();
       expect(screen.getByText("402 Silicon Towers, BKC, Mumbai")).toBeInTheDocument();
@@ -443,23 +450,165 @@ describe("Client Portal Pages Suite", () => {
       expect(screen.getByText("BANK_TRANSFER")).toBeInTheDocument();
     });
 
-    it("CRITICAL RULE §15: STRICTLY DOES NOT render payment checkout, Pay Now button, or card inputs", async () => {
+    it("shows outstanding amount and Pay now for payable invoices", async () => {
       vi.spyOn(portalApi, "getPortalInvoice").mockResolvedValue(mockInvoice);
+      const paySpy = vi.spyOn(portalApi, "payPortalInvoice").mockResolvedValue({
+        orderId: "order_test",
+        amount: "59000.00",
+        currency: "INR",
+        keyId: "rzp_test_key",
+        paymentId: "pay-pending-1",
+      });
 
       renderWithPortal(<PortalInvoiceDetailPage id="inv-200" />);
 
-      await screen.findByText("INV-2026-0042");
-
-      expect(screen.queryByText("Pay Now")).not.toBeInTheDocument();
-      expect(screen.queryByText("Checkout")).not.toBeInTheDocument();
-      expect(screen.queryByText("Pay with Razorpay")).not.toBeInTheDocument();
+      expect(await screen.findByTestId("portal-invoice-pay-button")).toBeInTheDocument();
+      expect(screen.getByText(/Outstanding:/i)).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId("portal-invoice-pay-button"));
+      await waitFor(() => {
+        expect(paySpy).toHaveBeenCalledWith("inv-200");
+      });
+      // Card/UPI fields are never rendered in FORGE — Razorpay Checkout owns that UI.
       expect(screen.queryByPlaceholderText(/card/i)).not.toBeInTheDocument();
       expect(screen.queryByPlaceholderText(/upi/i)).not.toBeInTheDocument();
+    });
+
+    it("polls invoice detail after checkout success until PAID without marking paid client-side", async () => {
+      const checkout = await import("../lib/razorpay-checkout");
+      vi.mocked(checkout.openRazorpayCheckout).mockImplementation(async (_order, opts) => {
+        opts.onSuccess?.();
+      });
+
+      let paid = false;
+      vi.spyOn(portalApi, "getPortalInvoice").mockImplementation(async () =>
+        paid
+          ? {
+              ...mockInvoice,
+              status: "PAID",
+              paidAmount: "118000.00",
+              pendingAmount: "0.00",
+            }
+          : mockInvoice
+      );
+      vi.spyOn(portalApi, "payPortalInvoice").mockResolvedValue({
+        orderId: "order_test",
+        amount: "59000.00",
+        currency: "INR",
+        keyId: "rzp_test_key",
+        paymentId: "pay-pending-1",
+      });
+
+      renderWithPortal(<PortalInvoiceDetailPage id="inv-200" />);
+      fireEvent.click(await screen.findByTestId("portal-invoice-pay-button"));
+
+      expect(await screen.findByTestId("portal-invoice-payment-processing")).toHaveTextContent(
+        /Waiting for gateway confirmation/i
+      );
+      expect(screen.getByTestId("portal-invoice-pay-button")).toBeDisabled();
+
+      paid = true;
+      await waitFor(
+        () => {
+          expect(screen.getByTestId("portal-invoice-paid")).toBeInTheDocument();
+        },
+        { timeout: 5000 }
+      );
+      expect(screen.queryByTestId("portal-invoice-pay-button")).not.toBeInTheDocument();
+    });
+
+    it("shows already-paid state without a pay action", async () => {
+      vi.spyOn(portalApi, "getPortalInvoice").mockResolvedValue({
+        ...mockInvoice,
+        status: "PAID",
+        paidAmount: "118000.00",
+        pendingAmount: "0.00",
+        payments: mockInvoice.payments,
+      });
+
+      renderWithPortal(<PortalInvoiceDetailPage id="inv-200" />);
+
+      expect(await screen.findByTestId("portal-invoice-paid")).toHaveTextContent("fully paid");
+      expect(screen.queryByTestId("portal-invoice-pay-button")).not.toBeInTheDocument();
     });
   });
 
   // ==========================================
-  // 5. DOCUMENTS & DOWNLOADS
+  // 5. SUPPORT TICKETS
+  // ==========================================
+  describe("Portal Support", () => {
+    it("lists tickets and creates a new company-scoped ticket", async () => {
+      const user = userEvent.setup();
+      const listSpy = vi.spyOn(portalApi, "listPortalSupportTickets").mockResolvedValue({
+        items: [
+          {
+            id: "tkt-1",
+            subject: "Milestone clarification",
+            status: "OPEN",
+            projectId: "proj-10",
+            raisedByClientUserId: "client-1",
+            resolvedAt: null,
+            createdAt: "2026-09-18T00:00:00Z",
+            updatedAt: null,
+          },
+        ],
+        page: 1,
+        pageSize: 25,
+        total: 1,
+      });
+      vi.spyOn(portalApi, "listPortalProjects").mockResolvedValue({
+        items: [
+          {
+            id: "proj-10",
+            organizationId: "org-1",
+            companyId: "comp-1",
+            name: "Mobile App MVP",
+            status: "ACTIVE",
+            phase: "QA",
+            deadline: null,
+            completedAt: null,
+            createdAt: "2026-09-01T00:00:00Z",
+            updatedAt: null,
+          },
+        ],
+        page: 1,
+        pageSize: 100,
+        total: 1,
+      });
+      const createSpy = vi.spyOn(portalApi, "createPortalSupportTicket").mockResolvedValue({
+        id: "tkt-2",
+        subject: "Need invoice copy",
+        status: "OPEN",
+        projectId: "proj-10",
+        raisedByClientUserId: "client-1",
+        resolvedAt: null,
+        createdAt: "2026-09-18T12:00:00Z",
+        updatedAt: null,
+      });
+
+      const { PortalSupportPage } = await import("./portal-support-page");
+      renderWithPortal(<PortalSupportPage />);
+
+      expect(await screen.findByText("Milestone clarification")).toBeInTheDocument();
+      expect(listSpy).toHaveBeenCalled();
+
+      await user.click(screen.getByTestId("portal-support-create"));
+      await screen.findByRole("option", { name: "Mobile App MVP" });
+      await user.selectOptions(screen.getByLabelText(/^Project/), "proj-10");
+      await user.type(screen.getByLabelText(/^Subject/), "Need invoice copy");
+      await user.click(screen.getByRole("button", { name: "Create ticket" }));
+
+      await waitFor(() => {
+        expect(createSpy).toHaveBeenCalledWith({
+          projectId: "proj-10",
+          subject: "Need invoice copy",
+        });
+      });
+      expect(await screen.findByTestId("portal-support-detail")).toHaveTextContent("Need invoice copy");
+    });
+  });
+
+  // ==========================================
+  // 6. DOCUMENTS & DOWNLOADS
   // ==========================================
   describe("Portal Documents", () => {
     const mockDoc: PortalDocument = {

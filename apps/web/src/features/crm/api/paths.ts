@@ -15,6 +15,7 @@ export const crmPaths = {
   transitionDeal: (id: string) => `/deals/${id}/transition`,
   reopenDeal: (id: string) => `/deals/${id}/reopen`,
   archiveDeal: (id: string) => `/deals/${id}/archive`,
+  bulkReassignDeals: "/deals/bulk-reassign",
   activities: "/activities",
   projects: "/projects",
   forgeFundEntries: "/forge-fund-entries",

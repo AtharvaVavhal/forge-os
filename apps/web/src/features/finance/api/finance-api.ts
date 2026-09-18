@@ -14,6 +14,8 @@ import {
   parsePaymentList,
   parseRefund,
   parseRefundList,
+  parseTaxRate,
+  parseTaxRateList,
 } from "./parse";
 import { financePaths } from "./paths";
 import type { CreditNoteReason, ForgeFundEntryType, OfflinePaymentMethod } from "./types";
@@ -234,4 +236,38 @@ export async function createForgeFundEntry(body: {
     idempotencyKey: newIdempotencyKey(),
   });
   return requireParsed(parseForgeFundEntry(payload), "forge fund entry");
+}
+
+export async function listTaxRates(query: { page?: number; pageSize?: number; sort?: string } = {}) {
+  const payload = await apiClient.get<unknown>(financePaths.taxRates, {
+    query: { page: query.page, pageSize: query.pageSize, sort: query.sort },
+  });
+  return requireParsed(parseTaxRateList(payload), "tax rate list");
+}
+
+export async function createTaxRate(body: {
+  hsnSacCode: string;
+  description: string;
+  cgstRate: string;
+  sgstRate: string;
+  igstRate: string;
+  effectiveFrom: string;
+  effectiveTo?: string;
+}) {
+  const payload = await browserMutate<unknown>("POST", financePaths.taxRates, { body });
+  return requireParsed(parseTaxRate(payload), "tax rate");
+}
+
+export async function updateTaxRate(
+  id: string,
+  body: Partial<{
+    description: string;
+    cgstRate: string;
+    sgstRate: string;
+    igstRate: string;
+    effectiveTo: string;
+  }>
+) {
+  const payload = await browserMutate<unknown>("PATCH", financePaths.taxRate(id), { body });
+  return requireParsed(parseTaxRate(payload), "tax rate");
 }

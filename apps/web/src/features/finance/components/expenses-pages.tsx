@@ -47,7 +47,7 @@ export function ExpensesPage() {
   });
   const projects = useQuery({
     queryKey: projectKeys.list({ page: 1, pageSize: 100 }),
-    queryFn: () => listProjects({ page: 1, pageSize: 100, sort: "createdAt:desc" }),
+    queryFn: () => listProjects({ page: 1, pageSize: 100 }),
     enabled: createOpen || editing !== null,
   });
 

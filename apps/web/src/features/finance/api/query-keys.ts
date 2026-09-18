@@ -33,4 +33,9 @@ export const financeKeys = {
     detail: (id: string) => ["finance", "forge-fund", "entry", id] as const,
     balance: ["finance", "forge-fund", "balance"] as const,
   },
+  taxRates: {
+    all: ["finance", "tax-rates"] as const,
+    list: (filters: Record<string, string | number | boolean | undefined>) =>
+      ["finance", "tax-rates", "list", filters] as const,
+  },
 };

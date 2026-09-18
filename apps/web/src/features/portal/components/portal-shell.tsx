@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { href: "/portal/projects", label: "Projects", exact: false },
   { href: "/portal/invoices", label: "Invoices", exact: false },
   { href: "/portal/documents", label: "Documents", exact: false },
+  { href: "/portal/support", label: "Support", exact: false },
 ];
 
 export function PortalShell({ children }: { children: ReactNode }) {
@@ -113,7 +114,7 @@ function PortalShellInner({ children }: { children: ReactNode }) {
             </div>
 
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={handleLogout}
               disabled={loggingOut}
@@ -126,7 +127,7 @@ function PortalShellInner({ children }: { children: ReactNode }) {
           {/* Mobile menu button */}
           <div className="md:hidden flex items-center gap-2">
             <Button
-              variant="outline"
+              variant="secondary"
               size="sm"
               onClick={() => setMobileMenuOpen((prev) => !prev)}
               aria-label="Toggle navigation"
@@ -173,7 +174,7 @@ function PortalShellInner({ children }: { children: ReactNode }) {
 
             <div className="pt-2 border-t border-[var(--forge-border-subtle,#f0eae0)]">
               <Button
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 className="w-full justify-center"
                 onClick={handleLogout}

@@ -96,7 +96,7 @@ export function InvoicesPage() {
   });
   const companies = useQuery({
     queryKey: crmKeys.companies.list({ page: 1, pageSize: 100 }),
-    queryFn: () => listCompanies({ page: 1, pageSize: 100, sort: "createdAt:desc" }),
+    queryFn: () => listCompanies({ page: 1, pageSize: 100 }),
     enabled: createOpen,
   });
   const proposals = useQuery({

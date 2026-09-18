@@ -77,7 +77,7 @@ export function ProposalsPage({ presetDealId }: { presetDealId?: string }) {
   });
   const deals = useQuery({
     queryKey: crmKeys.deals.list({ page: 1, pageSize: 100 }),
-    queryFn: () => listDeals({ page: 1, pageSize: 100, sort: "createdAt:desc" }),
+    queryFn: () => listDeals({ page: 1, pageSize: 100 }),
   });
 
   const createMutation = useMutation({
@@ -202,7 +202,7 @@ export function ProposalDetailPage({ id }: { id: string }) {
   });
   const deals = useQuery({
     queryKey: crmKeys.deals.list({ page: 1, pageSize: 100 }),
-    queryFn: () => listDeals({ page: 1, pageSize: 100, sort: "createdAt:desc" }),
+    queryFn: () => listDeals({ page: 1, pageSize: 100 }),
   });
 
   const updateMutation = useMutation({

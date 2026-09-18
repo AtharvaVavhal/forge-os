@@ -55,7 +55,6 @@ export function CompaniesPage() {
       q: debouncedQ || undefined,
       tag: debouncedTag || undefined,
       archived: archived === "omit" ? undefined : archived === "true",
-      sort: "createdAt:desc",
     }),
     [page, debouncedQ, debouncedTag, archived]
   );

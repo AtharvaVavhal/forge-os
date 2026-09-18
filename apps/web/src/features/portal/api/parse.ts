@@ -6,6 +6,7 @@ import {
   asString,
   isRecord,
   parseListEnvelope,
+  type ParsedPagination,
   readField,
   unwrapData,
 } from "@/lib/api/parse-json";
@@ -36,8 +37,11 @@ import {
   type PortalProposal,
   type PortalProposalLineItem,
   type PortalProposalStatus,
+  type PortalPayOrder,
   type PortalSignedDownloadUrl,
+  type PortalSupportTicket,
   type PortalTaxTreatment,
+  TICKET_STATUSES,
 } from "../types";
 
 function inSet<T extends string>(value: unknown, allowed: readonly T[]): T | null {
@@ -349,42 +353,77 @@ export function parsePortalSignedDownloadUrl(value: unknown): PortalSignedDownlo
   };
 }
 
-export function parsePortalProjectsList(payload: unknown): OffsetList<PortalProject> {
-  const envelope = parseListEnvelope(payload, parsePortalProject);
+export function parsePortalPayOrder(value: unknown): PortalPayOrder | null {
+  const node = isRecord(unwrapData(value)) ? (unwrapData(value) as Record<string, unknown>) : null;
+  if (!node) return null;
+
+  const orderId = asString(readField(node, "orderId", "order_id"));
+  const amount = asMoneyString(node.amount) ?? asString(node.amount) ?? null;
+  const currency = asString(node.currency) ?? "INR";
+  const keyId = asString(readField(node, "keyId", "key_id"));
+  const paymentId = asString(readField(node, "paymentId", "payment_id"));
+  if (!orderId || !amount || !keyId || !paymentId) return null;
+
+  return { orderId, amount, currency, keyId, paymentId };
+}
+
+export function parsePortalSupportTicket(value: unknown): PortalSupportTicket | null {
+  const node = isRecord(unwrapData(value)) ? (unwrapData(value) as Record<string, unknown>) : null;
+  if (!node) return null;
+
+  const id = asString(node.id);
+  const subject = asString(node.subject);
+  const status = inSet(node.status, TICKET_STATUSES);
+  const projectId = asString(readField(node, "projectId", "project_id"));
+  if (!id || !subject || !status || !projectId) return null;
+
+  return {
+    id,
+    subject,
+    status,
+    projectId,
+    raisedByClientUserId:
+      asString(readField(node, "raisedByClientUserId", "raised_by_client_user_id")) ?? null,
+    resolvedAt: asIsoDate(readField(node, "resolvedAt", "resolved_at")),
+    createdAt: asIsoDate(readField(node, "createdAt", "created_at")),
+    updatedAt: asIsoDate(readField(node, "updatedAt", "updated_at")),
+  };
+}
+
+function toPortalOffsetList<T>(envelope: { items: T[]; pagination: ParsedPagination } | null): OffsetList<T> {
+  if (!envelope) {
+    return { items: [], page: 1, pageSize: 20, total: 0 };
+  }
+  const total =
+    envelope.pagination.mode === "offset" && typeof envelope.pagination.total === "number"
+      ? envelope.pagination.total
+      : envelope.items.length;
+  const page = envelope.pagination.mode === "offset" ? envelope.pagination.page : 1;
+  const pageSize = envelope.pagination.mode === "offset" ? envelope.pagination.pageSize : envelope.items.length;
   return {
     items: envelope.items,
-    page: envelope.pagination.mode === "offset" ? envelope.pagination.page : 1,
-    pageSize: envelope.pagination.mode === "offset" ? envelope.pagination.pageSize : envelope.items.length,
-    total: envelope.pagination.mode === "offset" ? envelope.pagination.total : envelope.items.length,
+    page,
+    pageSize,
+    total,
   };
+}
+
+export function parsePortalProjectsList(payload: unknown): OffsetList<PortalProject> {
+  return toPortalOffsetList(parseListEnvelope(payload, parsePortalProject));
 }
 
 export function parsePortalProposalsList(payload: unknown): OffsetList<PortalProposal> {
-  const envelope = parseListEnvelope(payload, parsePortalProposal);
-  return {
-    items: envelope.items,
-    page: envelope.pagination.mode === "offset" ? envelope.pagination.page : 1,
-    pageSize: envelope.pagination.mode === "offset" ? envelope.pagination.pageSize : envelope.items.length,
-    total: envelope.pagination.mode === "offset" ? envelope.pagination.total : envelope.items.length,
-  };
+  return toPortalOffsetList(parseListEnvelope(payload, parsePortalProposal));
 }
 
 export function parsePortalInvoicesList(payload: unknown): OffsetList<PortalInvoice> {
-  const envelope = parseListEnvelope(payload, parsePortalInvoice);
-  return {
-    items: envelope.items,
-    page: envelope.pagination.mode === "offset" ? envelope.pagination.page : 1,
-    pageSize: envelope.pagination.mode === "offset" ? envelope.pagination.pageSize : envelope.items.length,
-    total: envelope.pagination.mode === "offset" ? envelope.pagination.total : envelope.items.length,
-  };
+  return toPortalOffsetList(parseListEnvelope(payload, parsePortalInvoice));
 }
 
 export function parsePortalDocumentsList(payload: unknown): OffsetList<PortalDocument> {
-  const envelope = parseListEnvelope(payload, parsePortalDocument);
-  return {
-    items: envelope.items,
-    page: envelope.pagination.mode === "offset" ? envelope.pagination.page : 1,
-    pageSize: envelope.pagination.mode === "offset" ? envelope.pagination.pageSize : envelope.items.length,
-    total: envelope.pagination.mode === "offset" ? envelope.pagination.total : envelope.items.length,
-  };
+  return toPortalOffsetList(parseListEnvelope(payload, parsePortalDocument));
+}
+
+export function parsePortalSupportTicketsList(payload: unknown): OffsetList<PortalSupportTicket> {
+  return toPortalOffsetList(parseListEnvelope(payload, parsePortalSupportTicket));
 }

@@ -88,7 +88,7 @@ describe("Lead detail", () => {
     vi.mocked(transitionLead).mockReset();
   });
 
-  it("shows convert only when qualified and calls the convert endpoint", async () => {
+  it("shows convert only when qualified and calls the convert endpoint with title and estimatedValue", async () => {
     const user = userEvent.setup();
     vi.mocked(convertLead).mockResolvedValue({
       lead: { ...qualified, status: "CONVERTED", convertedToDealId: "deal-1" },
@@ -103,8 +103,15 @@ describe("Lead detail", () => {
     expect(await screen.findByRole("button", { name: "Convert to deal" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Mark contacted" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Convert to deal" }));
+    const title = await screen.findByLabelText(/deal title/i);
+    await user.clear(title);
+    await user.type(title, "Acme website rebuild");
+    await user.type(screen.getByLabelText(/estimated value/i), "15000.00");
     await user.click(screen.getByRole("button", { name: "Confirm conversion" }));
-    expect(convertLead).toHaveBeenCalledWith("lead-1");
+    expect(convertLead).toHaveBeenCalledWith("lead-1", {
+      title: "Acme website rebuild",
+      estimatedValue: "15000.00",
+    });
     expect(routerMocks.push).toHaveBeenCalledWith("/crm/deals/deal-1");
   });
 
@@ -122,6 +129,7 @@ describe("Lead detail", () => {
       createAuthContext({ role: "SALES", permissions: ["crm.read", "crm.manage"] })
     );
     await user.click(await screen.findByRole("button", { name: "Convert to deal" }));
+    await user.type(await screen.findByLabelText(/estimated value/i), "15000.00");
     await user.click(screen.getByRole("button", { name: "Confirm conversion" }));
     expect(await screen.findByText("Lead must be QUALIFIED to convert.")).toBeInTheDocument();
   });

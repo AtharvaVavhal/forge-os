@@ -3,7 +3,6 @@ import { apiClient } from "@/lib/api/client";
 import { unwrapData } from "@/lib/api/parse-json";
 import {
   parsePortalClientUser,
-  parsePortalDocument,
   parsePortalDocumentsList,
   parsePortalHandoverSummary,
   parsePortalInvoice,
@@ -14,6 +13,9 @@ import {
   parsePortalProposal,
   parsePortalProposalsList,
   parsePortalSignedDownloadUrl,
+  parsePortalPayOrder,
+  parsePortalSupportTicket,
+  parsePortalSupportTicketsList,
 } from "./parse";
 import { portalPaths } from "./portal-paths";
 import type {
@@ -24,10 +26,19 @@ import type {
   PortalInvoice,
   PortalLoginRequest,
   PortalMilestone,
+  PortalPayOrder,
   PortalProject,
   PortalProposal,
   PortalSignedDownloadUrl,
+  PortalSupportTicket,
 } from "../types";
+
+function requireParsed<T>(value: T | null, label: string): T {
+  if (value === null) {
+    throw new Error(`Unexpected ${label} payload from the API.`);
+  }
+  return value;
+}
 
 export async function loginPortal(body: PortalLoginRequest): Promise<PortalClientUser | null> {
   const response = await browserMutate<unknown>("POST", portalPaths.auth.login, { body });
@@ -98,15 +109,37 @@ export async function getPortalInvoice(id: string): Promise<PortalInvoice | null
   return parsePortalInvoice(raw);
 }
 
+/** Starts Razorpay checkout for a payable portal invoice (does not mark paid). */
+export async function payPortalInvoice(id: string): Promise<PortalPayOrder> {
+  const raw = await browserMutate<unknown>("POST", portalPaths.invoicePay(id), {
+    idempotencyKey: crypto.randomUUID(),
+  });
+  return requireParsed(parsePortalPayOrder(raw), "portal pay order");
+}
+
 export async function listPortalDocuments(
   filters?: Record<string, string | number | boolean | undefined>
 ): Promise<OffsetList<PortalDocument>> {
-  const query = { ...filters, visibility: "CLIENT_VISIBLE" };
-  const raw = await apiClient.get<unknown>(portalPaths.documents, { query });
+  const raw = await apiClient.get<unknown>(portalPaths.documents, { query: filters });
   return parsePortalDocumentsList(raw);
 }
 
 export async function getPortalDocumentDownloadUrl(id: string): Promise<PortalSignedDownloadUrl | null> {
   const raw = await apiClient.get<unknown>(portalPaths.documentDownloadUrl(id));
   return parsePortalSignedDownloadUrl(raw);
+}
+
+export async function listPortalSupportTickets(
+  filters?: Record<string, string | number | boolean | undefined>
+): Promise<OffsetList<PortalSupportTicket>> {
+  const raw = await apiClient.get<unknown>(portalPaths.supportTickets, { query: filters });
+  return parsePortalSupportTicketsList(raw);
+}
+
+export async function createPortalSupportTicket(body: {
+  projectId: string;
+  subject: string;
+}): Promise<PortalSupportTicket> {
+  const raw = await browserMutate<unknown>("POST", portalPaths.supportTickets, { body });
+  return requireParsed(parsePortalSupportTicket(raw), "portal support ticket");
 }

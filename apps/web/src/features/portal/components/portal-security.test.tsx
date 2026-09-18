@@ -137,7 +137,7 @@ describe("Client Portal Security & Boundary Guarantees (Section 29)", () => {
     expect(html).not.toContain("CLOUDFLARE");
   });
 
-  it("does NOT expose Razorpay payment keys or checkout scripts in the portal UI", async () => {
+  it("does NOT embed Razorpay keys or checkout scripts before pay is started", async () => {
     vi.spyOn(portalApi, "getPortalInvoice").mockResolvedValue({
       id: "inv-1",
       organizationId: "org-1",
@@ -161,11 +161,11 @@ describe("Client Portal Security & Boundary Guarantees (Section 29)", () => {
     const { container } = renderWithPortal(<PortalInvoiceDetailPage id="inv-1" />);
 
     await screen.findByRole("heading", { name: "INV-001" });
+    expect(screen.getByTestId("portal-invoice-pay-button")).toBeInTheDocument();
 
     const html = container.innerHTML;
     expect(html).not.toContain("rzp_test_");
     expect(html).not.toContain("rzp_live_");
     expect(html).not.toContain("checkout.razorpay.com");
-    expect(html).not.toContain("Razorpay");
   });
 });

@@ -1,5 +1,6 @@
 import { apiClient } from "@/lib/api/client";
 import { browserMutate } from "@/lib/api/browser-mutate";
+import { isRecord, unwrapData } from "@/lib/api/parse-json";
 import {
   parseActivity,
   parseActivityList,
@@ -42,7 +43,6 @@ export async function listCompanies(query: OffsetQuery & { tag?: string; archive
       q: query.q || undefined,
       tag: query.tag || undefined,
       archived: query.archived,
-      sort: query.sort,
     },
   });
   return requireParsed(parseCompanyList(payload), "company list");
@@ -126,7 +126,6 @@ export async function listLeads(
       q: query.q || undefined,
       status: query.status,
       source: query.source,
-      sort: query.sort,
     },
   });
   return requireParsed(parseLeadList(payload), "lead list");
@@ -162,8 +161,11 @@ export async function transitionLead(id: string, to: Exclude<LeadStatus, "CONVER
   return requireParsed(parseLead(payload), "lead");
 }
 
-export async function convertLead(id: string) {
-  const payload = await browserMutate<unknown>("POST", crmPaths.convertLead(id), { body: {} });
+export async function convertLead(
+  id: string,
+  body: { title: string; estimatedValue: string; ownerId?: string }
+) {
+  const payload = await browserMutate<unknown>("POST", crmPaths.convertLead(id), { body });
   return requireParsed(parseLeadConversion(payload), "lead conversion");
 }
 
@@ -179,7 +181,6 @@ export async function listDeals(query: OffsetQuery & { stage?: DealStage; ownerI
       q: query.q || undefined,
       stage: query.stage,
       ownerId: query.ownerId,
-      sort: query.sort,
     },
   });
   return requireParsed(parseDealList(payload), "deal list");
@@ -231,6 +232,20 @@ export async function archiveDeal(id: string) {
   await browserMutate<unknown>("POST", crmPaths.archiveDeal(id), { body: {} });
 }
 
+export async function bulkReassignDeals(body: { ids: string[]; ownerId: string }) {
+  const payload = await browserMutate<unknown>("POST", crmPaths.bulkReassignDeals, { body });
+  const node = isRecord(unwrapData(payload))
+    ? (unwrapData(payload) as Record<string, unknown>)
+    : isRecord(payload)
+      ? payload
+      : null;
+  const count = typeof node?.count === "number" ? node.count : null;
+  if (count === null) {
+    throw new Error("Unexpected bulk reassign payload from the API.");
+  }
+  return { count };
+}
+
 export async function listActivities(query: {
   companyId?: string;
   contactId?: string;
@@ -258,7 +273,7 @@ export async function createActivity(body: {
 
 export async function listProjects(query: OffsetQuery = {}) {
   const payload = await apiClient.get<unknown>(crmPaths.projects, {
-    query: { page: query.page, pageSize: query.pageSize, sort: query.sort },
+    query: { page: query.page, pageSize: query.pageSize },
   });
   return requireParsed(parseProjectList(payload), "project list");
 }

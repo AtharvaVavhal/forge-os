@@ -9,12 +9,14 @@ import { FormActions } from "./page-chrome";
 import {
   companyFormSchema,
   contactFormSchema,
+  convertLeadFormSchema,
   dealFormSchema,
   emptyToUndefined,
   leadFormSchema,
   tagsFromInput,
   type CompanyFormValues,
   type ContactFormValues,
+  type ConvertLeadFormValues,
   type DealFormValues,
   type LeadFormValues,
 } from "../schemas/crm-forms";
@@ -345,6 +347,73 @@ export function DealFields({
         </Select>
       </Field>
       <FormActions onCancel={onCancel} pending={pending} submitLabel={deal ? "Save" : "Create deal"} />
+    </form>
+  );
+}
+
+export function ConvertLeadFields({
+  defaultTitle,
+  pending,
+  onCancel,
+  onSubmit,
+}: {
+  defaultTitle?: string;
+  pending: boolean;
+  onCancel: () => void;
+  onSubmit: (values: { title: string; estimatedValue: string }) => void;
+}) {
+  const [errors, setErrors] = useState<Partial<Record<keyof ConvertLeadFormValues, string>>>({});
+
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const parsed = convertLeadFormSchema.safeParse({
+          title: form.get("title"),
+          estimatedValue: form.get("estimatedValue"),
+        });
+        if (!parsed.success) {
+          const next: Partial<Record<keyof ConvertLeadFormValues, string>> = {};
+          for (const issue of parsed.error.issues) {
+            const key = issue.path[0];
+            if (typeof key === "string") next[key as keyof ConvertLeadFormValues] = issue.message;
+          }
+          setErrors(next);
+          return;
+        }
+        setErrors({});
+        onSubmit({
+          title: parsed.data.title,
+          estimatedValue: parsed.data.estimatedValue,
+        });
+      }}
+    >
+      <Field id="convert-title" label="Deal title" required error={errors.title}>
+        <Input
+          id="convert-title"
+          name="title"
+          defaultValue={defaultTitle}
+          invalid={Boolean(errors.title)}
+        />
+      </Field>
+      <Field
+        id="convert-value"
+        label="Estimated value"
+        required
+        hint="Exactly two decimal places, e.g. 12000.00"
+        error={errors.estimatedValue}
+      >
+        <Input
+          id="convert-value"
+          name="estimatedValue"
+          inputMode="decimal"
+          placeholder="12000.00"
+          invalid={Boolean(errors.estimatedValue)}
+        />
+      </Field>
+      <FormActions onCancel={onCancel} pending={pending} submitLabel="Confirm conversion" />
     </form>
   );
 }

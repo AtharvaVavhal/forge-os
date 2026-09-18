@@ -17,4 +17,6 @@ export const financePaths = {
   forgeFundEntries: "/forge-fund-entries",
   forgeFundEntry: (id: string) => `/forge-fund-entries/${id}`,
   forgeFundBalance: "/forge-fund/balance",
+  taxRates: "/tax-rates",
+  taxRate: (id: string) => `/tax-rates/${id}`,
 } as const;

@@ -29,6 +29,7 @@ describe("RBAC-aware navigation", () => {
     const hrefs = tree.flatMap((group) => group.items.map((item) => item.href));
     expect(hrefs).toContain("/finance/invoices");
     expect(hrefs).toContain("/finance/forge-fund");
+    expect(hrefs).toContain("/finance/tax-rates");
     expect(hrefs).toContain("/settings/audit-log");
     expect(hrefs).not.toContain("/settings/roles");
   });
