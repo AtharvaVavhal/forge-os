@@ -9,11 +9,32 @@
  */
 
 const DEFAULT_API_ORIGIN = "http://localhost:4000";
-const API_PREFIX = "/api/v1";
+export const API_PREFIX = "/api/v1";
+
+/**
+ * Normalize `NEXT_PUBLIC_API_BASE_URL` to an absolute base that always ends
+ * with the frozen `/api/v1` prefix (no trailing slash).
+ *
+ * Operators sometimes set the API *origin* only (e.g. Render service URL).
+ * Rewrites still work (they use `URL.origin` + `/api/v1`), but Server
+ * Component fetches join relative paths like `auth/me` onto the env value —
+ * without this normalization that becomes `https://host/auth/me` (404)
+ * instead of `https://host/api/v1/auth/me`.
+ */
+export function normalizeApiBaseUrl(fromEnv: string): string {
+  const url = new URL(fromEnv.trim());
+  // Always `${origin}/api/v1` — never trust a bare origin or alternate path.
+  // Rewrites already use origin alone; Server Components need the full prefix.
+  return `${url.origin}${API_PREFIX}`;
+}
 
 function requireProductionApiBase(fromEnv: string | undefined): string {
-  if (fromEnv && /^https?:\/\//.test(fromEnv)) {
-    return fromEnv.replace(/\/$/, "");
+  if (fromEnv && /^https?:\/\//.test(fromEnv.trim())) {
+    try {
+      return normalizeApiBaseUrl(fromEnv);
+    } catch {
+      // fall through to fail-closed / dev default
+    }
   }
   if (process.env.NODE_ENV === "production") {
     throw new Error("NEXT_PUBLIC_API_BASE_URL must be set to an absolute URL in production.");
