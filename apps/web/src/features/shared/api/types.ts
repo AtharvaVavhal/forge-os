@@ -100,4 +100,23 @@ export type RecordParent = {
   invoiceId?: string;
 };
 
+/** K10 — one result row of a bank-name search. A distinct bank, not a branch. */
+export interface BankSearchHit {
+  id: string;
+  bankName: string;
+  bankCode: string;
+}
+
+/** K10 — safe, non-sensitive IFSC resolution metadata (no payout/KYC fields). */
+export interface BankDirectoryLookup {
+  ifsc: string;
+  bankName: string;
+  bankCode: string;
+  branchName: string;
+  address: string;
+  city: string;
+  district: string | null;
+  state: string;
+}
+
 export const MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;

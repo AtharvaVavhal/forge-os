@@ -8,6 +8,7 @@ import { ActorType, PayoutMethod, type PayoutProfile, Prisma } from "@prisma/cli
 import { PrismaService } from "../../../database/prisma.service";
 import type { AuthenticatedUser } from "../../auth/types/authenticated-request.interface";
 import { AUDIT_ACTIONS, AuditService } from "../../shared/audit.service";
+import { BankDirectoryService } from "../../shared/bank-directory/services/bank-directory.service";
 import {
   StorageService,
   type PresignedDownloadResult,
@@ -38,7 +39,8 @@ export class PayoutProfileService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly storage: StorageService
+    private readonly storage: StorageService,
+    private readonly bankDirectory: BankDirectoryService
   ) {}
 
   async getOwn(actor: AuthenticatedUser): Promise<PayoutProfileView> {
@@ -56,6 +58,7 @@ export class PayoutProfileService {
     dto: UpsertPayoutProfileDto
   ): Promise<PayoutProfileView> {
     this.assertCompleteFields(dto);
+    await this.assertBankIfscConsistency(dto.bankName, dto.ifsc);
     const data = this.toWriteData(dto);
 
     const existing = await this.findOwn(actor);
@@ -299,6 +302,27 @@ export class PayoutProfileService {
         message:
           "Payout profile requires bank transfer details and a UPI ID.",
         details: { missing },
+      });
+    }
+  }
+
+  /**
+   * K10: resolves the submitted IFSC against the bank directory and rejects
+   * the save if it belongs to a different bank than the one submitted. Fails
+   * OPEN (does not block) when the directory doesn't cover this IFSC at all —
+   * the dataset isn't authoritative or permanently current, so "unknown to
+   * the directory" must not be treated as "invalid".
+   */
+  private async assertBankIfscConsistency(bankName: string, ifsc: string): Promise<void> {
+    const resolved = await this.bankDirectory.lookupIfsc(ifsc);
+    if (!resolved) return;
+
+    const submitted = bankName.trim().toUpperCase();
+    if (submitted !== resolved.bankName.trim().toUpperCase()) {
+      throw new BadRequestException({
+        code: "BANK_IFSC_MISMATCH",
+        message: `This IFSC belongs to ${resolved.bankName}, not ${bankName.trim()}.`,
+        details: { resolvedBankName: resolved.bankName },
       });
     }
   }

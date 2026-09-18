@@ -16,6 +16,8 @@ import {
   type Activity,
   type ActorType,
   type AuditLogRecord,
+  type BankDirectoryLookup,
+  type BankSearchHit,
   type CursorList,
   type DocumentCategory,
   type DocumentRecord,
@@ -191,6 +193,46 @@ export function parseSearchHits(payload: unknown): SearchHit[] | null {
     return data.hits.map(parseSearchHit).filter((item): item is SearchHit => item !== null);
   }
   return null;
+}
+
+export function parseBankSearchHit(value: unknown): BankSearchHit | null {
+  const node = isRecord(value) ? value : null;
+  if (!node) return null;
+  const id = asString(node.id);
+  const bankName = asString(readField(node, "bankName", "bank_name"));
+  const bankCode = asString(readField(node, "bankCode", "bank_code"));
+  if (!id || !bankName || !bankCode) return null;
+  return { id, bankName, bankCode };
+}
+
+export function parseBankSearchHits(payload: unknown): BankSearchHit[] | null {
+  const data = unwrapData(payload);
+  const list = isRecord(data) && Array.isArray(data.banks) ? data.banks : Array.isArray(data) ? data : null;
+  if (!list) return null;
+  return list.map(parseBankSearchHit).filter((item): item is BankSearchHit => item !== null);
+}
+
+export function parseBankDirectoryLookup(payload: unknown): BankDirectoryLookup | null {
+  const node = isRecord(unwrapData(payload)) ? (unwrapData(payload) as Record<string, unknown>) : null;
+  if (!node) return null;
+  const ifsc = asString(node.ifsc);
+  const bankName = asString(readField(node, "bankName", "bank_name"));
+  const bankCode = asString(readField(node, "bankCode", "bank_code"));
+  const branchName = asString(readField(node, "branchName", "branch_name"));
+  const address = asString(node.address);
+  const city = asString(node.city);
+  const state = asString(node.state);
+  if (!ifsc || !bankName || !bankCode || !branchName || !address || !city || !state) return null;
+  return {
+    ifsc,
+    bankName,
+    bankCode,
+    branchName,
+    address,
+    city,
+    district: asString(node.district) ?? null,
+    state,
+  };
 }
 
 export function parseSignedUrl(payload: unknown): string | null {

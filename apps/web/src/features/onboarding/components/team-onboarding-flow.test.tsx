@@ -29,6 +29,11 @@ vi.mock("../api/kyc-api", () => ({
   removeUpiQr: vi.fn(),
 }));
 
+vi.mock("@/features/shared/api/bank-directory-api", () => ({
+  searchBanks: vi.fn(),
+  lookupIfsc: vi.fn(),
+}));
+
 import { completeOnboarding } from "@/features/auth/api/auth-api";
 import {
   getOwnKycProfile,
@@ -37,6 +42,7 @@ import {
   submitKycProfile,
   upsertPayoutProfile,
 } from "../api/kyc-api";
+import { searchBanks, lookupIfsc } from "@/features/shared/api/bank-directory-api";
 
 const mockComplete = vi.mocked(completeOnboarding);
 const mockGetKyc = vi.mocked(getOwnKycProfile);
@@ -44,6 +50,8 @@ const mockGetPayout = vi.mocked(getOwnPayoutProfile);
 const mockSaveKyc = vi.mocked(saveKycProfile);
 const mockSubmit = vi.mocked(submitKycProfile);
 const mockUpsertPayout = vi.mocked(upsertPayoutProfile);
+const mockSearchBanks = vi.mocked(searchBanks);
+const mockLookupIfsc = vi.mocked(lookupIfsc);
 
 function draftKyc(overrides: Partial<KycProfile> = {}): KycProfile {
   return {
@@ -116,6 +124,8 @@ function dualPayout(overrides: Partial<PayoutProfile> = {}): PayoutProfile {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockSearchBanks.mockResolvedValue([]);
+  mockLookupIfsc.mockResolvedValue(null);
   mockGetKyc.mockResolvedValue(null);
   mockGetPayout.mockResolvedValue({
     configured: false,

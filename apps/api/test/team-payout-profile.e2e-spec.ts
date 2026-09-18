@@ -18,6 +18,29 @@ const DUAL_BODY = {
   upiId: "ada@okhdfcbank",
 };
 
+// K10 — a dedicated bank directory fixture, independent of whatever the real
+// imported dataset does or doesn't contain in this environment.
+const K10_CONSISTENCY_IFSC = "TEST0000010";
+const K10_CONSISTENCY_BANK = "K10 CONSISTENCY BANK";
+
+async function seedK10ConsistencyFixture(app: INestApplication): Promise<void> {
+  const prisma = app.get(PrismaService);
+  await prisma.bankDirectoryEntry.upsert({
+    where: { ifsc: K10_CONSISTENCY_IFSC },
+    create: {
+      bank_name: K10_CONSISTENCY_BANK,
+      bank_code: "TEST",
+      ifsc: K10_CONSISTENCY_IFSC,
+      branch_name: "Main Branch",
+      address: "1 Consistency Street",
+      city: "Testville",
+      district: "Test District",
+      state: "Test State",
+    },
+    update: {},
+  });
+}
+
 async function cleanupPayoutTestData(app: INestApplication): Promise<void> {
   const prisma = app.get(PrismaService);
   const users = await prisma.user.findMany({
@@ -101,10 +124,14 @@ describe("K4: TEAM_MEMBER Payout Profile API (e2e)", () => {
 
   beforeAll(async () => {
     app = await createTestApp();
+    await seedK10ConsistencyFixture(app);
   });
 
   afterAll(async () => {
     await cleanupPayoutTestData(app);
+    await app
+      .get(PrismaService)
+      .bankDirectoryEntry.deleteMany({ where: { ifsc: K10_CONSISTENCY_IFSC } });
     await app.close();
   });
 
@@ -280,6 +307,47 @@ describe("K4: TEAM_MEMBER Payout Profile API (e2e)", () => {
     expect(res.status).toBe(400);
   });
 
+  it("K10: accepts a payout when the bank matches the resolved IFSC", async () => {
+    const res = await request(app.getHttpServer())
+      .put("/api/v1/team/payout-profile")
+      .set(authHeaders(member))
+      .send({ ...DUAL_BODY, bankName: K10_CONSISTENCY_BANK, ifsc: K10_CONSISTENCY_IFSC });
+    expect(res.status).toBe(200);
+    expect(res.body.bankName).toBe(K10_CONSISTENCY_BANK);
+    expect(res.body.ifsc).toBe(K10_CONSISTENCY_IFSC);
+  });
+
+  it("K10: rejects a payout when the bank does not match the resolved IFSC", async () => {
+    const res = await request(app.getHttpServer())
+      .put("/api/v1/team/payout-profile")
+      .set(authHeaders(member))
+      .send({ ...DUAL_BODY, bankName: "Some Other Bank", ifsc: K10_CONSISTENCY_IFSC });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe("BANK_IFSC_MISMATCH");
+    expect(res.body.error.message).toContain(K10_CONSISTENCY_BANK);
+  });
+
+  it("K10: is case/whitespace-insensitive when matching the resolved bank name", async () => {
+    const res = await request(app.getHttpServer())
+      .put("/api/v1/team/payout-profile")
+      .set(authHeaders(member))
+      .send({
+        ...DUAL_BODY,
+        bankName: `  ${K10_CONSISTENCY_BANK.toLowerCase()}  `,
+        ifsc: K10_CONSISTENCY_IFSC,
+      });
+    expect(res.status).toBe(200);
+  });
+
+  it("K10: does not block a save when the IFSC isn't covered by the directory", async () => {
+    const res = await request(app.getHttpServer())
+      .put("/api/v1/team/payout-profile")
+      .set(authHeaders(member))
+      .send({ ...DUAL_BODY, bankName: "Any Bank At All", ifsc: "ZZZZ0999999" });
+    expect(res.status).toBe(200);
+    expect(res.body.bankName).toBe("Any Bank At All");
+  });
+
   it("TEAM_MEMBER cannot access another user's profile", async () => {
     await request(app.getHttpServer())
       .put("/api/v1/team/payout-profile")
@@ -387,6 +455,12 @@ describe("K4: TEAM_MEMBER Payout Profile API (e2e)", () => {
         ...DUAL_BODY,
         upiId: "ada@paytm",
         bankName: "ICICI Bank",
+        // K10: HDFC0001234 (DUAL_BODY.ifsc) is a real HDFC branch code in the
+        // bank directory — pairing it with "ICICI Bank" would now correctly
+        // fail the bank/IFSC consistency check. Use an IFSC the directory
+        // doesn't cover so this stays a test of independent field updates,
+        // not of that check.
+        ifsc: "ICIC0009876",
       });
     expect(updated.status).toBe(200);
     expect(updated.body.upiId).toBe("ada@paytm");

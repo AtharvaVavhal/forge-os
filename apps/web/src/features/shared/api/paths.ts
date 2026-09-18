@@ -11,4 +11,6 @@ export const sharedPaths = {
   notificationRead: (id: string) => `/notifications/${id}/read`,
   auditLogs: "/audit-logs",
   search: "/search",
+  bankSearch: "/banks/search",
+  bankIfsc: (ifsc: string) => `/banks/ifsc/${encodeURIComponent(ifsc)}`,
 } as const;

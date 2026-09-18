@@ -150,8 +150,10 @@ export function TeamOnboardingFlow({ name }: { name: string }) {
       await invalidateProfiles();
       setManualStep("review");
     },
-    onError: () => {
-      setActionError("Something went wrong while saving your information.");
+    // K10: surface the backend's specific message (e.g. a bank/IFSC mismatch)
+    // instead of a generic fallback, so the user knows exactly what to fix.
+    onError: (error) => {
+      setActionError(queryErrorMessage(error));
     },
   });
 
@@ -221,8 +223,10 @@ export function TeamOnboardingFlow({ name }: { name: string }) {
       }
       await uploadUpiQr(file);
       await invalidateProfiles();
-    } catch {
-      setQrError("Upload failed. Try again.");
+    } catch (error) {
+      // K10: the auto-save above can fail on a bank/IFSC mismatch — surface
+      // that specific message rather than a generic "upload failed".
+      setQrError(queryErrorMessage(error));
     } finally {
       setQrUploading(false);
     }

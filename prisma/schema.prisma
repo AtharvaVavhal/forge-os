@@ -1281,3 +1281,28 @@ model PayoutProfile {
   @@index([organization_id])
   @@map("payout_profiles")
 }
+
+// ─── Bank directory (K10; shared reference data — no organization_id) ───────
+
+/// Read-only IFSC/branch directory imported from an external dataset via
+/// prisma/import-bank-directory.ts. Never holds account numbers, account
+/// holder names, or any other payout/KYC data — see PayoutProfile for that.
+model BankDirectoryEntry {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bank_name   String
+  /// 4-letter IFSC prefix (e.g. "HDFC") — denormalized from `ifsc` at import time.
+  bank_code   String
+  ifsc        String   @unique
+  branch_name String
+  address     String
+  city        String
+  /// Source dataset's "CITY2" column — the branch's district, not its city.
+  district    String?
+  state       String
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @updatedAt @db.Timestamptz(6)
+
+  @@index([bank_name])
+  @@index([bank_code])
+  @@map("bank_directory_entries")
+}

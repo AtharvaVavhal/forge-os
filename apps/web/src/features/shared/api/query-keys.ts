@@ -25,4 +25,8 @@ export const sharedKeys = {
       ["shared", "audit-logs", "list", filters] as const,
   },
   search: (q: string) => ["shared", "search", q] as const,
+  banks: {
+    search: (q: string) => ["shared", "banks", "search", q] as const,
+    ifsc: (ifsc: string) => ["shared", "banks", "ifsc", ifsc] as const,
+  },
 };
