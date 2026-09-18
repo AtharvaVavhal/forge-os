@@ -5,4 +5,5 @@ export const teamKeys = {
       ["team", "members", "list", filters] as const,
   },
   workload: ["team", "workload"] as const,
+  payoutProfile: ["team", "payout-profile"] as const,
 };
