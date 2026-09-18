@@ -1,6 +1,7 @@
 import { BadRequestException, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { mockS3ClientConfigs } from "../../../../../test/__mocks__/@aws-sdk/client-s3";
 import {
   ALLOWED_MIME_TYPES,
   MAX_FILE_SIZE_BYTES,
@@ -30,6 +31,7 @@ function configWithR2(overrides?: Partial<AppConfig["storage"]["r2"]>): ConfigSe
 describe("StorageService (R2)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockS3ClientConfigs.length = 0;
   });
 
   it("reports configured when R2 credentials are present", () => {
@@ -143,6 +145,18 @@ describe("StorageService (R2)", () => {
 
   it("uses a 15-minute signed URL TTL", () => {
     expect(PRESIGNED_URL_TTL_SECONDS).toBe(900);
+  });
+
+  it("configures the R2 client to skip AWS SDK v3's automatic checksum signing", () => {
+    // Regression guard: without requestChecksumCalculation: "WHEN_REQUIRED",
+    // the SDK signs an x-amz-checksum-crc32 computed over the (absent) body
+    // at presign time into the upload URL. The browser's real PUT can never
+    // satisfy that checksum, so R2 rejects the upload with a 403 that shows
+    // up in the browser as an opaque CORS failure. See the real-SDK proof in
+    // test/r2-presign-checksum.contract-spec.ts.
+    new StorageService(configWithR2());
+    expect(mockS3ClientConfigs).toHaveLength(1);
+    expect(mockS3ClientConfigs[0]?.requestChecksumCalculation).toBe("WHEN_REQUIRED");
   });
 
   it("maps R2 SDK failures to safe STORAGE_UNAVAILABLE errors", async () => {

@@ -69,6 +69,17 @@ export class StorageService {
           accessKeyId: r2.accessKeyId,
           secretAccessKey: r2.secretAccessKey,
         },
+        // AWS SDK v3 (>=3.729) defaults to "WHEN_SUPPORTED": it auto-adds a
+        // CRC32 checksum for PutObject, computed against whatever body is on
+        // the command at presign time. We never attach a Body (the file is
+        // uploaded browser -> R2, not through this server), so that checksum
+        // is computed over an empty payload and gets signed into the URL's
+        // query string. R2 then validates the real upload's checksum against
+        // that bogus value and rejects it — surfacing to the browser as an
+        // opaque CORS-blocked 403. "WHEN_REQUIRED" restores pre-3.729
+        // behavior: only compute a checksum when the operation mandates one
+        // or the caller explicitly sets ChecksumAlgorithm (we do neither).
+        requestChecksumCalculation: "WHEN_REQUIRED",
       });
     } else {
       this.client = null;

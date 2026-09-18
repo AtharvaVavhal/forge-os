@@ -25,9 +25,12 @@ function asString(value: unknown, fallback: string): string {
   return typeof value === "string" ? value : fallback;
 }
 
+/** Captures the config each S3Client was constructed with, for assertions. */
+export const mockS3ClientConfigs: Record<string, unknown>[] = [];
+
 export class S3Client {
-  constructor(_config?: unknown) {
-    void _config;
+  constructor(config?: Record<string, unknown>) {
+    mockS3ClientConfigs.push(config ?? {});
   }
 
   send(command: { constructor?: { name?: string }; input?: Record<string, unknown> }) {

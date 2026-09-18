@@ -1,0 +1,11 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "testRegex": "test/.*\\.contract-spec\\.ts$",
+  "modulePathIgnorePatterns": ["<rootDir>/test/__mocks__"],
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "setupFiles": ["reflect-metadata"]
+}
