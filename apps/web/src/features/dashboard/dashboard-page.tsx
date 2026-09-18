@@ -23,6 +23,9 @@ import { crmKeys } from "@/features/crm/api/query-keys";
 import { enumLabel, formatDate } from "@/features/crm/format";
 import type { ProjectStatus } from "@/features/crm/api/types";
 import { ErrorState, LoadingState, TableLoadingState } from "@/components/data-display/data-states";
+import { getOwnKycProfile } from "@/features/onboarding/api/kyc-api";
+import { onboardingQueryKeys } from "@/features/onboarding/api/query-keys";
+import { KycStatusSummary } from "@/features/onboarding/components/kyc-status-summary";
 
 const projectTone: Record<ProjectStatus, StatusTone> = {
   ACTIVE: "success",
@@ -72,6 +75,10 @@ export function DashboardPage() {
       </header>
 
       <WorkspaceIdentity />
+
+      <Can role="TEAM_MEMBER">
+        <KycStatusWidget />
+      </Can>
 
       <section aria-label="Key indicators" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiSlot
@@ -136,6 +143,42 @@ export function DashboardPage() {
         <ForgeFundWidget />
       </Can>
     </div>
+  );
+}
+
+/**
+ * TEAM_MEMBER-only — reads the same GET /team/kyc used by onboarding, so
+ * once onboardedAt is true (required just to reach /dashboard) and
+ * /onboarding becomes gate-closed, this is the only place status is visible.
+ */
+function KycStatusWidget() {
+  const kyc = useQuery({
+    queryKey: onboardingQueryKeys.kyc(),
+    queryFn: getOwnKycProfile,
+  });
+
+  return (
+    <Card aria-label="KYC and verification status">
+      <CardHeader
+        kicker="Verification"
+        title="KYC & Verification"
+        action={
+          <Link
+            href="/settings/profile?tab=verification"
+            className="type-body font-semibold text-ember-deep hover:underline"
+          >
+            View verification
+          </Link>
+        }
+      />
+      {kyc.isPending ? (
+        <LoadingState label="Loading verification status" />
+      ) : kyc.isError ? (
+        <ErrorState>{queryErrorMessage(kyc.error)}</ErrorState>
+      ) : (
+        <KycStatusSummary profile={kyc.data} />
+      )}
+    </Card>
   );
 }
 
