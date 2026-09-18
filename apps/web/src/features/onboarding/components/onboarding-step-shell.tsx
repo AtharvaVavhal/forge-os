@@ -74,8 +74,7 @@ export function OnboardingStepShell({
         {nextLabel ? (
           <Button
             type={nextType}
-            variant="inverse"
-            className="bg-ink text-paper hover:bg-ink/90"
+            variant="dark"
             loading={nextPending}
             disabled={nextDisabled || nextPending}
             onClick={nextType === "button" ? onNext : undefined}

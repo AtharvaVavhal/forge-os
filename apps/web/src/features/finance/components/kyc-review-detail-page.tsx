@@ -307,8 +307,7 @@ function KycReviewDetailInner({ id }: { id: string }) {
               <div className="flex flex-col gap-3 sm:flex-row">
                 <Button
                   type="button"
-                  className="bg-ink text-paper hover:bg-ink/90"
-                  variant="inverse"
+                  variant="dark"
                   onClick={() => setConfirmApprove(true)}
                 >
                   Approve KYC
@@ -328,8 +327,7 @@ function KycReviewDetailInner({ id }: { id: string }) {
                   <Button
                     type="button"
                     loading={review.isPending}
-                    className="bg-ink text-paper hover:bg-ink/90"
-                    variant="inverse"
+                    variant="dark"
                     onClick={() => review.mutate({ action: "APPROVE" })}
                   >
                     Confirm approval

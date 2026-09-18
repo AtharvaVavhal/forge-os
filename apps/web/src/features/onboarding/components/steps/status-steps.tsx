@@ -42,12 +42,7 @@ export function SubmittedStep({
       <p className="mt-3 max-w-md font-[family-name:var(--font-body)] text-[1rem] leading-relaxed text-ink/70">
         Your KYC details are now under review.
       </p>
-      <Button
-        type="button"
-        variant="inverse"
-        className="mt-10 bg-ink text-paper hover:bg-ink/90"
-        onClick={onContinue}
-      >
+      <Button type="button" variant="dark" className="mt-10" onClick={onContinue}>
         Continue
       </Button>
     </main>
@@ -75,12 +70,7 @@ export function RejectedStep({
           Please review your details and documents, then submit again.
         </p>
       )}
-      <Button
-        type="button"
-        variant="inverse"
-        className="mt-10 bg-ink text-paper hover:bg-ink/90"
-        onClick={onUpdate}
-      >
+      <Button type="button" variant="dark" className="mt-10" onClick={onUpdate}>
         Update KYC
       </Button>
     </main>

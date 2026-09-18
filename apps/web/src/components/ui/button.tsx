@@ -16,6 +16,7 @@ const variantClass = {
   ghost: "bg-transparent text-ink hover:bg-ink/[0.04] disabled:hover:bg-transparent",
   inverse:
     "border border-paper/25 bg-transparent text-paper hover:bg-paper/[0.06] disabled:hover:bg-transparent",
+  dark: "bg-ink text-paper hover:bg-ink/90 disabled:hover:bg-ink",
   destructive:
     "border border-danger-deep text-danger-deep hover:bg-danger-soft disabled:hover:bg-transparent",
 } as const;
