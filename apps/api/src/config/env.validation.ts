@@ -78,9 +78,9 @@ class EnvironmentVariables {
   COOKIE_DOMAIN?: string;
 
   /**
-   * B9: HMAC secret for document upload/download URL signatures.
-   * Optional — when unset, StorageService falls back to SESSION_JWT_SIGNING_KEY.
-   * Never uses a hardcoded default.
+   * Legacy optional HMAC secret used by the pre-R2 stub StorageService.
+   * With Cloudflare R2 SigV4 presigning this is unused. Retained so existing
+   * deployments that still set it do not fail validation.
    */
   @IsOptional()
   @IsString()
@@ -88,6 +88,28 @@ class EnvironmentVariables {
     message: "STORAGE_SIGNING_SECRET must be at least 32 characters when set.",
   })
   STORAGE_SIGNING_SECRET?: string;
+
+  // --- Cloudflare R2 (Document 6 §11, F10.2) ---------------------------------
+  // All optional at boot (same pattern as Razorpay/Google): document routes
+  // return 503 STORAGE_NOT_CONFIGURED when these are unset. If any R2_* var is
+  // set, all four must be present (validated in configuration factory via
+  // `configured` boolean — incomplete sets simply leave configured=false).
+
+  @IsOptional()
+  @IsString()
+  R2_ACCOUNT_ID?: string;
+
+  @IsOptional()
+  @IsString()
+  R2_ACCESS_KEY_ID?: string;
+
+  @IsOptional()
+  @IsString()
+  R2_SECRET_ACCESS_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  R2_BUCKET_NAME?: string;
 
   // --- Password hashing (Document 6 §3) -------------------------------------
 
@@ -178,6 +200,42 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   RAZORPAY_WEBHOOK_SECRET?: string;
+
+  // --- Resend transactional email (Document 6 §20, F10.3) -------------------
+  // Optional at boot, same pattern as Razorpay/R2/Google above: invitation
+  // creation and password-reset requests remain fully functional (DB writes,
+  // token issuance, generic anti-enumeration responses) without Resend
+  // configured — only the email-delivery side effect is skipped, and that is
+  // reported honestly rather than silently pretended. If either is set, both
+  // must be (validated together in the configuration factory, same as R2's
+  // all-or-nothing rule).
+
+  @IsOptional()
+  @IsString()
+  RESEND_API_KEY?: string;
+
+  /** Verified sender, e.g. `"FORGE <noreply@forgebuilds.in>"` — never
+   * defaulted to a fake/development address anywhere in application code. */
+  @IsOptional()
+  @IsString()
+  EMAIL_FROM?: string;
+
+  /**
+   * Express trust-proxy hop count (F10.4). Prefer `1` behind a single reverse
+   * proxy. Do not set `true`. See resolveTrustProxyHops — production defaults
+   * to 1 when unset; development/test default to disabled.
+   */
+  @IsOptional()
+  @IsString()
+  TRUST_PROXY?: string;
+
+  /**
+   * When `"false"`, disables the in-process DomainEvent outbox worker.
+   * Always disabled under NODE_ENV=test. Not required to boot.
+   */
+  @IsOptional()
+  @IsBooleanString()
+  DOMAIN_EVENT_WORKER_ENABLED?: string;
 }
 
 export function validate(config: Record<string, unknown>): EnvironmentVariables {

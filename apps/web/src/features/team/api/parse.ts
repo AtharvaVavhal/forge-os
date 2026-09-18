@@ -9,7 +9,7 @@ import {
   readField,
   unwrapData,
 } from "@/lib/api/parse-json";
-import type { OffsetList, TeamMember, WorkloadRow } from "./types";
+import type { CreateInvitationResult, OffsetList, TeamMember, WorkloadRow } from "./types";
 
 function isUserRole(value: unknown): value is UserRole {
   return typeof value === "string" && (USER_ROLES as readonly string[]).includes(value);
@@ -113,4 +113,24 @@ export function parseWorkloadView(payload: unknown): { rows: WorkloadRow[] } | n
             : null;
   if (!list) return null;
   return { rows: list.map(parseWorkloadRow).filter((row): row is WorkloadRow => row !== null) };
+}
+
+/**
+ * Parses POST /invitations. Requires `emailSent` and a minimal invitation
+ * identity. Explicitly drops any raw `token` so it never reaches callers.
+ */
+export function parseCreateInvitationResult(payload: unknown): CreateInvitationResult | null {
+  const root = isRecord(unwrapData(payload)) ? (unwrapData(payload) as Record<string, unknown>) : null;
+  if (!root) return null;
+  const emailSent = asBoolean(root.emailSent);
+  if (typeof emailSent !== "boolean") return null;
+  const invitationNode = isRecord(root.invitation) ? root.invitation : null;
+  if (!invitationNode) return null;
+  const id = asString(invitationNode.id);
+  const email = asString(invitationNode.email);
+  if (!id || !email) return null;
+  return {
+    invitation: { id, email },
+    emailSent,
+  };
 }

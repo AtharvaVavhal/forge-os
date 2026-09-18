@@ -1,6 +1,11 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import type { AppConfig } from "../../../config/configuration";
+import { resolveWebAppOrigin } from "../../../common/http/web-app-origin";
 import { PrismaService } from "../../../database/prisma.service";
 import { AuditService, AUDIT_ACTIONS } from "../../shared/audit.service";
+import { EmailService } from "../../shared/email/services/email.service";
+import { buildPasswordResetEmail } from "../../shared/email/templates/password-reset-email";
 import { OrganizationContextService } from "../../shared/organization-context.service";
 import { PasswordService } from "./password.service";
 import { SessionService } from "./session.service";
@@ -38,7 +43,9 @@ export class PasswordResetService {
     private readonly organizationContext: OrganizationContextService,
     private readonly passwordService: PasswordService,
     private readonly sessionService: SessionService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly config: ConfigService<AppConfig, true>,
+    private readonly emailService: EmailService
   ) {}
 
   /**
@@ -71,12 +78,37 @@ export class PasswordResetService {
       entityId: user.id,
     });
 
-    // Delivering `token` by email (Resend, Document 6 §20) is outside
-    // Phase 1's scope — no notification module exists yet. It is
-    // deliberately not returned in the HTTP response or logged at a level
-    // that would leak it into shared logs; a real deployment wires this
-    // return value into an email send, not a response body.
-    void token;
+    // `token` is never returned in the HTTP response or logged anywhere —
+    // it only ever leaves this method embedded in the reset URL passed
+    // straight to EmailService (F10.3). The response contract below is
+    // unchanged regardless of delivery outcome (anti-enumeration, Document
+    // 6 §7): this method still always resolves the same way for both a
+    // real and an unknown email, so a caller can never distinguish "no such
+    // account" from "account exists but the reset email failed to send."
+    const ttlSeconds = this.config.get("auth.passwordResetTokenTtlSeconds", { infer: true });
+    const resetUrl = `${resolveWebAppOrigin(this.config.get("cors.origins", { infer: true }))}/reset-password?token=${token}`;
+    const renderedEmail = buildPasswordResetEmail({
+      resetUrl,
+      expiresInMinutes: Math.max(1, Math.round(ttlSeconds / 60)),
+    });
+    const sendResult = await this.emailService.send({
+      to: user.email,
+      subject: renderedEmail.subject,
+      html: renderedEmail.html,
+      text: renderedEmail.text,
+    });
+
+    if (!sendResult.sent) {
+      await this.audit.record({
+        organizationId,
+        actorType: "SYSTEM",
+        actorId: user.id,
+        action: AUDIT_ACTIONS.PASSWORD_RESET_EMAIL_FAILED,
+        entityType: "User",
+        entityId: user.id,
+        after: { reason: sendResult.reason },
+      });
+    }
   }
 
   async confirm(rawToken: string, newPassword: string): Promise<void> {

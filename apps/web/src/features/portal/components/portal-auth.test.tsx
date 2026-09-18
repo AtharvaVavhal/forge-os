@@ -33,6 +33,14 @@ describe("Portal Authentication & Login Flow", () => {
 
     expect(await screen.findByTestId("portal-login-email-error")).toHaveTextContent("Enter your email.");
     expect(await screen.findByTestId("portal-login-password-error")).toHaveTextContent("Enter your password.");
+    expect(screen.getByTestId("portal-login-email-input")).toHaveAttribute(
+      "aria-describedby",
+      "portal-email-error"
+    );
+    expect(screen.getByTestId("portal-login-password-input")).toHaveAttribute(
+      "aria-describedby",
+      "portal-password-error"
+    );
   });
 
   it("validates malformed email input", async () => {
@@ -85,7 +93,7 @@ describe("Portal Authentication & Login Flow", () => {
 
   it("handles 401 Invalid Credentials with generic message (no enumeration)", async () => {
     vi.spyOn(portalApi, "loginPortal").mockRejectedValue(
-      new ApiClientError(401, { code: "UNAUTHORIZED", message: "Invalid credentials." })
+      new ApiClientError(401, { code: "UNAUTHORIZED", message: "Invalid credentials.", requestId: "req-test" })
     );
 
     renderWithPortal(<PortalLoginPage />);
@@ -104,7 +112,7 @@ describe("Portal Authentication & Login Flow", () => {
 
   it("handles inactive client account explicitly", async () => {
     vi.spyOn(portalApi, "loginPortal").mockRejectedValue(
-      new ApiClientError(403, { code: "CLIENT_INACTIVE", message: "Client is inactive." })
+      new ApiClientError(403, { code: "CLIENT_INACTIVE", message: "Client is inactive.", requestId: "req-test" })
     );
 
     renderWithPortal(<PortalLoginPage />);
@@ -123,7 +131,7 @@ describe("Portal Authentication & Login Flow", () => {
 
   it("handles 429 Rate Limit error", async () => {
     vi.spyOn(portalApi, "loginPortal").mockRejectedValue(
-      new ApiClientError(429, { code: "RATE_LIMITED", message: "Too many attempts." })
+      new ApiClientError(429, { code: "RATE_LIMITED", message: "Too many attempts.", requestId: "req-test" })
     );
 
     renderWithPortal(<PortalLoginPage />);

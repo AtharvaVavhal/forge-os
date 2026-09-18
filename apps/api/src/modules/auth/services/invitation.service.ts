@@ -9,8 +9,11 @@ import { ConfigService } from "@nestjs/config";
 import { randomBytes, createHash } from "node:crypto";
 import { InvitationScope, UserRole, type ClientUser, type User } from "@prisma/client";
 import type { AppConfig } from "../../../config/configuration";
+import { resolveWebAppOrigin } from "../../../common/http/web-app-origin";
 import { PrismaService } from "../../../database/prisma.service";
 import { AuditService, AUDIT_ACTIONS } from "../../shared/audit.service";
+import { EmailService } from "../../shared/email/services/email.service";
+import { buildInvitationEmail } from "../../shared/email/templates/invitation-email";
 import { PasswordService } from "./password.service";
 import type { AuthenticatedUser } from "../types/authenticated-request.interface";
 
@@ -49,7 +52,8 @@ export class InvitationService {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService<AppConfig, true>,
     private readonly passwordService: PasswordService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly emailService: EmailService
   ) {}
 
   /**
@@ -132,11 +136,45 @@ export class InvitationService {
     });
 
     // The raw token is returned exactly once, here — it is never
-    // retrievable again (only its hash is persisted). Actually delivering
-    // it by email (Resend, per Document 6 §20) is outside Phase 1's scope
-    // (no domain/notification module exists yet); the caller is
-    // responsible for transport until that exists.
-    return { invitation, rawToken };
+    // retrievable again (only its hash is persisted); non-production
+    // responses may still surface it (see invitations.controller.ts, B9 H2),
+    // but delivery is now Resend-first (F10.3). DB creation above is a
+    // single, non-transactional write, so this network call never holds a
+    // transaction open. A delivery failure does not undo the invitation —
+    // it's still valid and acceptable; only the notification is missed, and
+    // that is reported honestly via `emailSent` rather than assumed.
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: actor.organizationId },
+      select: { name: true },
+    });
+    const renderedEmail = buildInvitationEmail({
+      organizationName: organization?.name ?? "FORGE",
+      inviterName: actor.name,
+      scope: invitation.scope,
+      role: invitation.user_role,
+      acceptUrl: `${resolveWebAppOrigin(this.config.get("cors.origins", { infer: true }))}/invite/${rawToken}`,
+      expiresAt: invitation.expires_at,
+    });
+    const sendResult = await this.emailService.send({
+      to: invitation.email,
+      subject: renderedEmail.subject,
+      html: renderedEmail.html,
+      text: renderedEmail.text,
+    });
+
+    if (!sendResult.sent) {
+      await this.audit.record({
+        organizationId: actor.organizationId,
+        actorType: "SYSTEM",
+        actorId: null,
+        action: AUDIT_ACTIONS.INVITATION_EMAIL_FAILED,
+        entityType: "InvitationToken",
+        entityId: invitation.id,
+        after: { reason: sendResult.reason },
+      });
+    }
+
+    return { invitation, rawToken, emailSent: sendResult.sent };
   }
 
   async get(actor: AuthenticatedUser, id: string) {

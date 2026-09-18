@@ -1,9 +1,24 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import {
+  HeadObjectCommand,
+  PutObjectCommand,
+  GetObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import * as crypto from "crypto";
 import type { AppConfig } from "../../../../config/configuration";
 
 export const MAX_FILE_SIZE_BYTES = 26_214_400; // 25 MB
+
+/** Presigned URL lifetime — short-lived; authorization remains Forge-side. */
+export const PRESIGNED_URL_TTL_SECONDS = 15 * 60;
 
 export const ALLOWED_MIME_TYPES = new Set([
   "application/pdf",
@@ -35,19 +50,33 @@ export interface PresignedDownloadResult {
 
 @Injectable()
 export class StorageService {
-  private readonly signingSecret: string;
+  private readonly logger = new Logger(StorageService.name);
+  private readonly client: S3Client | null;
+  private readonly bucket: string | null;
+  private readonly configured: boolean;
 
   constructor(private readonly config: ConfigService<AppConfig, true>) {
-    // B9: never fall back to a hardcoded secret. Prefer STORAGE_SIGNING_SECRET;
-    // otherwise reuse the required session signing key (still server-only).
-    const storageSecret = this.config.get("storage.signingSecret", { infer: true });
-    const sessionSecret = this.config.get("auth.sessionJwtSigningKey", { infer: true });
-    this.signingSecret = storageSecret || sessionSecret;
-    if (!this.signingSecret || this.signingSecret.length < 32) {
-      throw new Error(
-        "STORAGE_SIGNING_SECRET (or SESSION_JWT_SIGNING_KEY) must be at least 32 characters."
-      );
+    const r2 = this.config.get("storage.r2", { infer: true });
+    this.configured = Boolean(r2?.configured);
+    this.bucket = r2?.bucketName ?? null;
+
+    if (this.configured && r2) {
+      // Cloudflare R2 S3-compatible endpoint — derived from account id, never hardcoded per-tenant.
+      this.client = new S3Client({
+        region: "auto",
+        endpoint: `https://${r2.accountId}.r2.cloudflarestorage.com`,
+        credentials: {
+          accessKeyId: r2.accessKeyId,
+          secretAccessKey: r2.secretAccessKey,
+        },
+      });
+    } else {
+      this.client = null;
     }
+  }
+
+  isConfigured(): boolean {
+    return this.configured;
   }
 
   assertValidFile(mimeType: string, sizeBytes: number): void {
@@ -94,67 +123,158 @@ export class StorageService {
     }
   }
 
-  generateUploadUrl(
+  sanitizeFilename(filename: string): string {
+    return filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100);
+  }
+
+  async generateUploadUrl(
     organizationId: string,
     filename: string,
     mimeType: string,
     sizeBytes: number
-  ): PresignedUploadResult {
+  ): Promise<PresignedUploadResult> {
     this.assertValidFile(mimeType, sizeBytes);
+    const { client, bucket } = this.requireClient();
 
-    const sanitizedFilename = filename
-      .replace(/[^a-zA-Z0-9._-]/g, "_")
-      .slice(0, 100);
+    const sanitizedFilename = this.sanitizeFilename(filename);
     const storageKey = `${organizationId}/${crypto.randomUUID()}-${sanitizedFilename}`;
+    const expiresAt = new Date(Date.now() + PRESIGNED_URL_TTL_SECONDS * 1000).toISOString();
 
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-    const signature = this.computeSignature(
-      `UPLOAD:${storageKey}:${mimeType}:${sizeBytes}:${expiresAt}`
-    );
+    try {
+      const command = new PutObjectCommand({
+        Bucket: bucket,
+        Key: storageKey,
+        ContentType: mimeType.toLowerCase().trim(),
+        ContentLength: sizeBytes,
+      });
+      const uploadUrl = await getSignedUrl(client, command, {
+        expiresIn: PRESIGNED_URL_TTL_SECONDS,
+      });
 
-    const baseUrl = process.env.STORAGE_BASE_URL || "https://storage.forge.internal";
-    const uploadUrl = `${baseUrl}/upload/${encodeURIComponent(storageKey)}?expires=${encodeURIComponent(
-      expiresAt
-    )}&sig=${signature}`;
-
-    return {
-      storageKey,
-      uploadUrl,
-      expiresAt,
-      maxSizeBytes: MAX_FILE_SIZE_BYTES,
-    };
+      return {
+        storageKey,
+        uploadUrl,
+        expiresAt,
+        maxSizeBytes: MAX_FILE_SIZE_BYTES,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to create R2 upload URL (${error instanceof Error ? error.name : "unknown"})`
+      );
+      throw new ServiceUnavailableException({
+        code: "STORAGE_UNAVAILABLE",
+        message: "Document storage is temporarily unavailable.",
+      });
+    }
   }
 
-  generateDownloadUrl(
+  async generateDownloadUrl(
     storageKey: string,
     filename: string,
     mimeType: string
-  ): PresignedDownloadResult {
+  ): Promise<PresignedDownloadResult> {
+    const { client, bucket } = this.requireClient();
     const sanitizedFilename = filename.replace(/["\r\n]/g, "_");
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-    const signature = this.computeSignature(
-      `DOWNLOAD:${storageKey}:${sanitizedFilename}:${expiresAt}`
-    );
+    const expiresAt = new Date(Date.now() + PRESIGNED_URL_TTL_SECONDS * 1000).toISOString();
 
-    const baseUrl = process.env.STORAGE_BASE_URL || "https://storage.forge.internal";
-    const downloadUrl = `${baseUrl}/download/${encodeURIComponent(
-      storageKey
-    )}?filename=${encodeURIComponent(
-      sanitizedFilename
-    )}&mime=${encodeURIComponent(mimeType)}&disposition=attachment&expires=${encodeURIComponent(
-      expiresAt
-    )}&sig=${signature}`;
+    // Force attachment disposition — SVG (and other types) must not execute inline.
+    const contentDisposition = `attachment; filename="${sanitizedFilename}"`;
 
-    return {
-      downloadUrl,
-      expiresAt,
-    };
+    try {
+      const command = new GetObjectCommand({
+        Bucket: bucket,
+        Key: storageKey,
+        ResponseContentDisposition: contentDisposition,
+        ResponseContentType: mimeType.toLowerCase().trim(),
+      });
+      const downloadUrl = await getSignedUrl(client, command, {
+        expiresIn: PRESIGNED_URL_TTL_SECONDS,
+      });
+
+      return { downloadUrl, expiresAt };
+    } catch (error) {
+      this.logger.error(
+        `Failed to create R2 download URL (${error instanceof Error ? error.name : "unknown"})`
+      );
+      throw new ServiceUnavailableException({
+        code: "STORAGE_UNAVAILABLE",
+        message: "Document storage is temporarily unavailable.",
+      });
+    }
   }
 
-  private computeSignature(payload: string): string {
-    return crypto
-      .createHmac("sha256", this.signingSecret)
-      .update(payload)
-      .digest("hex");
+  /**
+   * Verify the object exists in R2 and matches the declared size/MIME before
+   * registering a Document row (prevents registering phantom keys).
+   */
+  async assertObjectMatchesRegistration(
+    storageKey: string,
+    mimeType: string,
+    sizeBytes: number
+  ): Promise<void> {
+    const { client, bucket } = this.requireClient();
+
+    try {
+      const head = await client.send(
+        new HeadObjectCommand({
+          Bucket: bucket,
+          Key: storageKey,
+        })
+      );
+
+      if (typeof head.ContentLength === "number" && head.ContentLength !== sizeBytes) {
+        throw new BadRequestException({
+          code: "STORAGE_OBJECT_MISMATCH",
+          message: "Uploaded object size does not match the registered document.",
+        });
+      }
+
+      const declaredMime = mimeType.toLowerCase().trim();
+      if (head.ContentType) {
+        const storedMime = head.ContentType.toLowerCase().split(";")[0]?.trim();
+        if (storedMime && storedMime !== declaredMime) {
+          throw new BadRequestException({
+            code: "STORAGE_OBJECT_MISMATCH",
+            message: "Uploaded object MIME type does not match the registered document.",
+          });
+        }
+      }
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+
+      const status =
+        typeof error === "object" &&
+        error !== null &&
+        "$metadata" in error &&
+        typeof (error as { $metadata?: { httpStatusCode?: number } }).$metadata
+          ?.httpStatusCode === "number"
+          ? (error as { $metadata: { httpStatusCode: number } }).$metadata.httpStatusCode
+          : undefined;
+
+      if (status === 404 || (error instanceof Error && error.name === "NotFound")) {
+        throw new BadRequestException({
+          code: "STORAGE_OBJECT_MISSING",
+          message: "Upload was not found in storage. Complete the upload before registering.",
+        });
+      }
+
+      this.logger.error(
+        `R2 HeadObject failed (${error instanceof Error ? error.name : "unknown"})`
+      );
+      throw new ServiceUnavailableException({
+        code: "STORAGE_UNAVAILABLE",
+        message: "Document storage is temporarily unavailable.",
+      });
+    }
+  }
+
+  private requireClient(): { client: S3Client; bucket: string } {
+    if (!this.configured || !this.client || !this.bucket) {
+      throw new ServiceUnavailableException({
+        code: "STORAGE_NOT_CONFIGURED",
+        message: "Document storage is not configured in this environment.",
+      });
+    }
+    return { client: this.client, bucket: this.bucket };
   }
 }

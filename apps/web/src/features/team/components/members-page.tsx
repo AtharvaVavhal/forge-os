@@ -35,7 +35,7 @@ export function MembersPage() {
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
   const { role } = useAuthorization();
-  const filters = useMemo(() => ({ page, pageSize: 25, sort: "createdAt:desc" }), [page]);
+  const filters = useMemo(() => ({ page, pageSize: 25 }), [page]);
 
   const list = useQuery({
     queryKey: teamKeys.members.list(filters),
@@ -45,14 +45,24 @@ export function MembersPage() {
   const inviteMutation = useMutation({
     mutationFn: (body: { email: string; userRole: UserRole }) =>
       createTeamInvitation({ scope: "TEAM", email: body.email, userRole: body.userRole }),
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: teamKeys.members.all });
       setInviteOpen(false);
-      pushToast({
-        title: "Invitation created",
-        description: "Delivery is handled by the backend. The raw token is not shown here.",
-        tone: "success",
-      });
+      // HTTP 201 always means the invitation row was created. Delivery status
+      // is reported honestly via `emailSent` — never assume the email went out.
+      if (data.emailSent) {
+        pushToast({
+          title: "Invitation sent.",
+          description: `Invitation sent to ${variables.email}.`,
+          tone: "success",
+        });
+      } else {
+        pushToast({
+          title: "Invitation created, but the email could not be sent.",
+          description: `The invitation for ${variables.email} was saved. Try inviting again if they still need the email.`,
+          tone: "warning",
+        });
+      }
     },
     onError: (error) =>
       pushToast({ title: "Couldn’t invite", description: queryErrorMessage(error), tone: "danger" }),
@@ -162,14 +172,19 @@ function InviteFields({
           {error}
         </p>
       ) : null}
-      <Field id="invite-email" label="Email" required>
-        <Input id="invite-email" name="email" type="email" autoComplete="email" />
+      <Field
+        id="invite-email"
+        label="Email"
+        required
+        hint="Invite Forge teammates with their @forgebuilds.in Google Workspace address. The server still validates the invitation."
+      >
+        <Input id="invite-email" name="email" type="email" autoComplete="email" placeholder="name@forgebuilds.in" />
       </Field>
       <Field
         id="invite-role"
         label="Role"
         required
-        hint="TEAM invitations set UserRole. There is no Role table or permission-matrix editor. Backend still authorizes the invite."
+        hint="Only roles you are allowed to assign are listed. The API remains authoritative."
       >
         <Select id="invite-role" name="userRole" defaultValue="TEAM_MEMBER">
           {inviteableRoles.map((role) => (

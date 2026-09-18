@@ -13,6 +13,7 @@ import { SearchService } from "./search/services/search.service";
 import { SearchController } from "./search/controllers/search.controller";
 import { AuditLogsService } from "./audit-logs/services/audit-logs.service";
 import { AuditLogsController } from "./audit-logs/controllers/audit-logs.controller";
+import { EmailService } from "./email/services/email.service";
 
 /**
  * Global, per Document 5 §1: "shared... imported by everyone, imports no
@@ -39,6 +40,7 @@ import { AuditLogsController } from "./audit-logs/controllers/audit-logs.control
     NotificationsService,
     SearchService,
     AuditLogsService,
+    EmailService,
   ],
   exports: [
     AuditService,
@@ -49,6 +51,7 @@ import { AuditLogsController } from "./audit-logs/controllers/audit-logs.control
     NotificationsService,
     SearchService,
     AuditLogsService,
+    EmailService,
   ],
 })
 export class SharedModule {}

@@ -1,24 +1,16 @@
 import type { NextConfig } from "next";
+import { resolveRewriteApiOrigin } from "./src/lib/api/resolve-rewrite-origin";
 
 /**
- * Resolve API origin for rewrites/CSP. Prefer NEXT_PUBLIC_API_BASE_URL.
- * Soft-fallback to localhost so `next build` can evaluate config; runtime
- * server requests still fail closed via `getServerApiBaseUrl()` in production.
+ * Resolve API origin for rewrites/CSP. Production fails closed — never
+ * rewrite to localhost when NODE_ENV=production.
  */
 function apiOrigin(): string {
-  const base = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (base) {
-    try {
-      return new URL(base).origin;
-    } catch {
-      // fall through
-    }
-  }
-  return "http://localhost:4000";
+  return resolveRewriteApiOrigin(process.env.NEXT_PUBLIC_API_BASE_URL, process.env.NODE_ENV);
 }
 
 function securityHeaders(): { key: string; value: string }[] {
-  return [
+  const headers: { key: string; value: string }[] = [
     { key: "X-Content-Type-Options", value: "nosniff" },
     { key: "X-Frame-Options", value: "DENY" },
     { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -35,6 +27,7 @@ function securityHeaders(): { key: string; value: string }[] {
         "frame-ancestors 'none'",
         "object-src 'none'",
         // Next.js App Router typically needs inline/eval; Razorpay Checkout needs its CDN.
+        // Accepted limitation: CSP is not fully strict while these remain.
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://checkout.razorpay.com",
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data: blob: https:",
@@ -45,6 +38,17 @@ function securityHeaders(): { key: string; value: string }[] {
       ].join("; "),
     },
   ];
+
+  // HSTS only in production builds. TLS terminators may also set this;
+  // duplicate HSTS headers are acceptable (browsers use the max age).
+  if (process.env.NODE_ENV === "production") {
+    headers.push({
+      key: "Strict-Transport-Security",
+      value: "max-age=31536000; includeSubDomains",
+    });
+  }
+
+  return headers;
 }
 
 const nextConfig: NextConfig = {
@@ -56,8 +60,7 @@ const nextConfig: NextConfig = {
   // approach for cross-package types).
   transpilePackages: ["@forge/types", "@forge/api-client"],
   // Same-origin `/api/v1` so the httpOnly `forge_session` cookie is first-party
-  // during local development (Document 6 §5, SameSite=Strict). Does not invent
-  // API routes — it proxies the documented Nest prefix.
+  // (Document 6 §5, SameSite=Strict). Proxies the documented Nest prefix only.
   async rewrites() {
     return [
       {

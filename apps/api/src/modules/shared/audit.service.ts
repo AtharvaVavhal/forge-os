@@ -85,6 +85,11 @@ export const AUDIT_ACTIONS = {
   INVITATION_REVOKED: "invitation.revoked",
   INVITATION_ACCEPTED: "invitation.accepted",
   INVITATION_ACCEPT_REJECTED: "invitation.accept_rejected",
+  // F10.3 Resend transactional email — delivery failures only (a successful
+  // send has no distinct audit event; INVITATION_CREATED /
+  // PASSWORD_RESET_REQUESTED above already mark the triggering action).
+  INVITATION_EMAIL_FAILED: "invitation.email_failed",
+  PASSWORD_RESET_EMAIL_FAILED: "auth.password_reset_email_failed",
   // B2 CRM (Document 5 §12.1/§12.2 "Audit" columns; Document 6 §17 Tier A).
   LEAD_TRANSITIONED: "lead.transitioned",
   LEAD_CONVERTED: "lead.converted",

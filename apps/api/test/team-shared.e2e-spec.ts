@@ -564,8 +564,10 @@ describe("Phase B6: Team + Shared Systems (e2e)", () => {
         .expect(200);
 
       expect(res.body).toHaveProperty("downloadUrl");
-      expect(res.body.downloadUrl).toContain("disposition=attachment");
-      expect(res.body.downloadUrl).toContain("sig=");
+      expect(res.body.downloadUrl).toContain("response-content-disposition=");
+      expect(res.body.downloadUrl).toMatch(/attachment/i);
+      expect(res.body.downloadUrl).toContain("X-Amz-Signature=");
+      expect(res.body.downloadUrl).not.toMatch(/r2_secret|ACCESS_KEY|SECRET_ACCESS/i);
     });
 
     it("soft deletes a document and emits Tier A audit event", async () => {

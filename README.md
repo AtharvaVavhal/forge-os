@@ -26,6 +26,8 @@ This is **not** the marketing website at `/Users/atharva/Forge`. Do not merge Pr
 
 ## Setup
 
+Requires **Node.js 20** (see `.nvmrc` / `engines`). Use `nvm use` or an equivalent version manager.
+
 ```bash
 cp .env.example .env
 # set DATABASE_URL to a dedicated Business OS Postgres database (NOT marketing Supabase)
@@ -34,10 +36,11 @@ npm install
 npm run db:setup   # migrate deploy + baseline seed
 ```
 
-Full guide: [`docs/FORGE-BUSINESS-OS-DATABASE-MIGRATION.md`](docs/FORGE-BUSINESS-OS-DATABASE-MIGRATION.md)
+Full database guide: [`docs/FORGE-BUSINESS-OS-DATABASE-MIGRATION.md`](docs/FORGE-BUSINESS-OS-DATABASE-MIGRATION.md)
+Staging/production API runbook (no deploy): [`docs/PRODUCTION-DEPLOYMENT.md`](docs/PRODUCTION-DEPLOYMENT.md)
 
 Custom SQL `001`–`004` is **embedded** in the init migration (reproducible). Files under `prisma/sql/` remain the readable source references.
 
 ## Out of scope here
 
-NestJS modules, Razorpay handlers, portal auth, and UI — later phases.
+Team Finance / Payout / KYC, Redis, Kubernetes, and Terraform are out of scope for F10.4. The API Docker image builds the Nest process only — migrations are a separate operator step.

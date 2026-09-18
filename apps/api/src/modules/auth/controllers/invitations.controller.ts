@@ -27,19 +27,22 @@ export class InvitationsController {
 
   @Post()
   async create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateInvitationDto) {
-    const { invitation, rawToken } = await this.invitationService.create(user, {
+    const { invitation, rawToken, emailSent } = await this.invitationService.create(user, {
       scope: dto.scope,
       email: dto.email,
       userRole: dto.userRole,
       companyId: dto.companyId,
     });
     // B9 H2: never return the raw token in production. Non-production keeps
-    // returning it so local/e2e flows can accept invitations until email delivery exists.
+    // returning it so local/e2e flows can accept invitations independently
+    // of email delivery (e.g. when Resend isn't configured in that
+    // environment). `emailSent` is always reported honestly either way
+    // (F10.3) — it is never inferred/assumed true.
     const exposeToken = this.config.get("auth.invitationExposeRawToken", { infer: true });
     if (!exposeToken) {
-      return { invitation };
+      return { invitation, emailSent };
     }
-    return { invitation, token: rawToken };
+    return { invitation, token: rawToken, emailSent };
   }
 
   @Get(":id")

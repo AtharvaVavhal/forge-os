@@ -68,7 +68,7 @@ export class DocumentsService {
       await this.assertParentInOrgAndAuthorized(actor, dto);
     }
 
-    return this.storage.generateUploadUrl(
+    return await this.storage.generateUploadUrl(
       actor.organizationId,
       dto.filename,
       dto.mimeType,
@@ -96,6 +96,13 @@ export class DocumentsService {
         message: "This storageKey is already registered to a document.",
       });
     }
+
+    // Confirm the object exists in R2 before creating the Document row.
+    await this.storage.assertObjectMatchesRegistration(
+      dto.storageKey,
+      dto.mimeType,
+      dto.sizeBytes
+    );
 
     return this.prisma.document.create({
       data: {
@@ -160,7 +167,7 @@ export class DocumentsService {
   ): Promise<PresignedDownloadResult> {
     const doc = await this.findAccessibleDocument(actor, id);
 
-    return this.storage.generateDownloadUrl(
+    return await this.storage.generateDownloadUrl(
       doc.storage_key,
       doc.filename,
       doc.mime_type

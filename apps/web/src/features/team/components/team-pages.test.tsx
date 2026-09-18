@@ -75,20 +75,65 @@ describe("Team members", () => {
     expect(await screen.findByText("No members")).toBeInTheDocument();
   });
 
-  it("successfully sends an invitation", async () => {
+  it("renders the invite form with email, role, and domain guidance", async () => {
     const user = userEvent.setup();
-    vi.mocked(createTeamInvitation).mockResolvedValue(undefined);
+    renderWithShell(<MembersPage />, manage);
+    await user.click(await screen.findByRole("button", { name: "Invite member" }));
+
+    expect(screen.getByLabelText(/^email/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^role/i)).toBeInTheDocument();
+    expect(screen.getByText(/Google Workspace address/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/aadhaar/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/upi/i)).not.toBeInTheDocument();
+  });
+
+  it("shows Invitation sent when emailSent is true and never renders a raw token", async () => {
+    const user = userEvent.setup();
+    const leakToken = "raw-invitation-token-abcdef0123456789";
+    vi.mocked(createTeamInvitation).mockResolvedValue({
+      invitation: { id: "inv-1", email: "newbie@forgebuilds.in" },
+      emailSent: true,
+    });
+    renderWithShell(<MembersPage />, manage);
+
+    await user.click(await screen.findByRole("button", { name: "Invite member" }));
+    await user.type(screen.getByLabelText(/email/i), "newbie@forgebuilds.in");
+    await user.selectOptions(screen.getByLabelText(/role/i), "SALES");
+    await user.click(screen.getByRole("button", { name: "Send invitation" }));
+
+    expect(createTeamInvitation).toHaveBeenCalledWith({
+      scope: "TEAM",
+      email: "newbie@forgebuilds.in",
+      userRole: "SALES",
+    });
+    expect(await screen.findByText("Invitation sent.")).toBeInTheDocument();
+    expect(screen.getByText("Invitation sent to newbie@forgebuilds.in.")).toBeInTheDocument();
+    expect(screen.queryByText(leakToken)).not.toBeInTheDocument();
+    expect(screen.queryByText(/raw token/i)).not.toBeInTheDocument();
+    expect(window.localStorage?.getItem(leakToken) ?? null).toBeNull();
+    expect(window.sessionStorage?.getItem(leakToken) ?? null).toBeNull();
+  });
+
+  it("does not claim Invitation sent when emailSent is false", async () => {
+    const user = userEvent.setup();
+    vi.mocked(createTeamInvitation).mockResolvedValue({
+      invitation: { id: "inv-2", email: "newbie@forgebuilds.in" },
+      emailSent: false,
+    });
     renderWithShell(<MembersPage />, manage);
 
     await user.click(await screen.findByRole("button", { name: "Invite member" }));
     await user.type(screen.getByLabelText(/email/i), "newbie@forgebuilds.in");
     await user.click(screen.getByRole("button", { name: "Send invitation" }));
 
-    expect(createTeamInvitation).toHaveBeenCalledWith({
-      scope: "TEAM",
-      email: "newbie@forgebuilds.in",
-      userRole: "TEAM_MEMBER",
-    });
+    expect(
+      await screen.findByText("Invitation created, but the email could not be sent.")
+    ).toBeInTheDocument();
+    expect(screen.getByText(/invitation for newbie@forgebuilds\.in was saved/i)).toBeInTheDocument();
+    expect(screen.queryByText("Invitation sent.")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Invitation sent to/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Resend/i)).not.toBeInTheDocument();
   });
 
   it("hides FOUNDER_ADMIN invite option for non-founder callers", async () => {
@@ -105,7 +150,9 @@ describe("Team members", () => {
       (el) => el.getAttribute("value")
     );
     expect(options).not.toContain("FOUNDER_ADMIN");
-    expect(options).toContain("TEAM_MEMBER");
+    expect(options).toEqual(
+      expect.arrayContaining(["OPERATIONS", "FINANCE", "SALES", "TEAM_MEMBER"])
+    );
   });
 
   it("shows FOUNDER_ADMIN invite option for founder callers", async () => {
@@ -116,6 +163,94 @@ describe("Team members", () => {
       (el) => el.getAttribute("value")
     );
     expect(options).toContain("FOUNDER_ADMIN");
+  });
+
+  it("surfaces invite validation failure from the API", async () => {
+    const user = userEvent.setup();
+    vi.mocked(createTeamInvitation).mockRejectedValue(
+      new ApiClientError(400, {
+        code: "INVITATION_USER_ROLE_REQUIRED",
+        message: "A role is required for a team invitation.",
+        requestId: "r",
+      })
+    );
+    renderWithShell(<MembersPage />, manage);
+    await user.click(await screen.findByRole("button", { name: "Invite member" }));
+    await user.type(screen.getByLabelText(/email/i), "newbie@forgebuilds.in");
+    await user.click(screen.getByRole("button", { name: "Send invitation" }));
+
+    expect(await screen.findByText("Couldn’t invite")).toBeInTheDocument();
+    expect(screen.getByText("A role is required for a team invitation.")).toBeInTheDocument();
+  });
+
+  it("shows session expiry on invite 401", async () => {
+    const user = userEvent.setup();
+    vi.mocked(createTeamInvitation).mockRejectedValue(
+      new ApiClientError(401, { code: "UNAUTHORIZED", message: "expired", requestId: "r" })
+    );
+    renderWithShell(<MembersPage />, manage);
+    await user.click(await screen.findByRole("button", { name: "Invite member" }));
+    await user.type(screen.getByLabelText(/email/i), "newbie@forgebuilds.in");
+    await user.click(screen.getByRole("button", { name: "Send invitation" }));
+
+    expect(await screen.findByText("Couldn’t invite")).toBeInTheDocument();
+    expect(screen.getByText("Your session expired. Sign in again.")).toBeInTheDocument();
+  });
+
+  it("shows authorization error on invite 403", async () => {
+    const user = userEvent.setup();
+    vi.mocked(createTeamInvitation).mockRejectedValue(
+      new ApiClientError(403, {
+        code: "FORBIDDEN_PERMISSION",
+        message: "You don't have permission to do this.",
+        requestId: "r",
+      })
+    );
+    renderWithShell(<MembersPage />, manage);
+    await user.click(await screen.findByRole("button", { name: "Invite member" }));
+    await user.type(screen.getByLabelText(/email/i), "newbie@forgebuilds.in");
+    await user.click(screen.getByRole("button", { name: "Send invitation" }));
+
+    expect(await screen.findByText("Couldn’t invite")).toBeInTheDocument();
+    expect(screen.getByText("You don’t have permission to do this.")).toBeInTheDocument();
+  });
+
+  it("handles duplicate/conflict invitation 409 safely", async () => {
+    const user = userEvent.setup();
+    vi.mocked(createTeamInvitation).mockRejectedValue(
+      new ApiClientError(409, {
+        code: "INVITATION_ALREADY_FINAL",
+        message: "This invitation has already been used or revoked.",
+        requestId: "r",
+      })
+    );
+    renderWithShell(<MembersPage />, manage);
+    await user.click(await screen.findByRole("button", { name: "Invite member" }));
+    await user.type(screen.getByLabelText(/email/i), "newbie@forgebuilds.in");
+    await user.click(screen.getByRole("button", { name: "Send invitation" }));
+
+    expect(await screen.findByText("Couldn’t invite")).toBeInTheDocument();
+    expect(screen.getByText("This invitation has already been used or revoked.")).toBeInTheDocument();
+  });
+
+  it("shows a generic safe error on invite 500/503 without provider details", async () => {
+    const user = userEvent.setup();
+    vi.mocked(createTeamInvitation).mockRejectedValue(
+      new ApiClientError(503, {
+        code: "EMAIL_NOT_CONFIGURED",
+        message: "Resend API key missing for account acct_secret",
+        requestId: "r",
+      })
+    );
+    renderWithShell(<MembersPage />, manage);
+    await user.click(await screen.findByRole("button", { name: "Invite member" }));
+    await user.type(screen.getByLabelText(/email/i), "newbie@forgebuilds.in");
+    await user.click(screen.getByRole("button", { name: "Send invitation" }));
+
+    expect(await screen.findByText("Couldn’t invite")).toBeInTheDocument();
+    expect(screen.getByText("The service is temporarily unavailable. Try again shortly.")).toBeInTheDocument();
+    expect(screen.queryByText(/Resend/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/acct_secret/i)).not.toBeInTheDocument();
   });
 
   it("shows unavailable on 404 instead of zero members", async () => {

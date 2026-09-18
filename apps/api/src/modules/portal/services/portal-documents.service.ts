@@ -68,7 +68,7 @@ export class PortalDocumentsService {
     if (!document) {
       throw new NotFoundException({ code: "NOT_FOUND", message: "Document not found." });
     }
-    return this.storage.generateDownloadUrl(
+    return await this.storage.generateDownloadUrl(
       document.storage_key,
       document.filename,
       document.mime_type

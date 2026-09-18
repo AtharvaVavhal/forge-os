@@ -3,6 +3,11 @@ import request from "supertest";
 import { createTestApp, extractCookie } from "./support/bootstrap";
 import { cleanupTestFixtures, createTestUser } from "./support/fixtures";
 import { PrismaService } from "../src/database/prisma.service";
+import {
+  mockSentEmails,
+  queueMockResendError,
+  resetMockResend,
+} from "./__mocks__/resend";
 
 describe("Invitations (e2e)", () => {
   let app: INestApplication;
@@ -179,5 +184,73 @@ describe("Invitations (e2e)", () => {
 
     await prisma.company.delete({ where: { id: foreignCompany.id } }).catch(() => undefined);
     await prisma.organization.delete({ where: { id: otherOrg.id } }).catch(() => undefined);
+  });
+
+  describe("F10.3 — invitation email (Resend)", () => {
+    beforeEach(() => {
+      resetMockResend();
+    });
+
+    it("sends a transactional email to the invitee via Resend with the accept URL and reports emailSent:true", async () => {
+      const email = "phase1-e2e-invite-email-sent@forge.local";
+      const { token, invitation } = await createInvitation(email);
+
+      expect(mockSentEmails).toHaveLength(1);
+      const sent = mockSentEmails[0]!;
+      expect(sent.to).toBe(email);
+      expect(sent.from).toBe(process.env.EMAIL_FROM);
+      expect(sent.subject).toMatch(/invited to FORGE/i);
+      expect(sent.html).toContain(`/invite/${token}`);
+      expect(sent.text).toContain(`/invite/${token}`);
+
+      const prisma = app.get(PrismaService);
+      const row = await prisma.invitationToken.findUniqueOrThrow({ where: { id: invitation.id } });
+      const expectedExpiry = row.expires_at.toUTCString();
+      expect(sent.text).toContain(expectedExpiry);
+
+      await prisma.invitationToken.delete({ where: { id: invitation.id } }).catch(() => undefined);
+    });
+
+    it("the email body never contains the API key, and the subject never contains the token", async () => {
+      const email = "phase1-e2e-invite-email-safe@forge.local";
+      const { token, invitation } = await createInvitation(email);
+
+      const sent = mockSentEmails.at(-1)!;
+      expect(sent.subject).not.toContain(token);
+      expect(JSON.stringify(sent)).not.toContain(process.env.RESEND_API_KEY!);
+
+      const prisma = app.get(PrismaService);
+      await prisma.invitationToken.delete({ where: { id: invitation.id } }).catch(() => undefined);
+    });
+
+    it("still creates the invitation and reports emailSent:false when Resend fails — never a silent false-success", async () => {
+      queueMockResendError({ message: "domain not verified", name: "invalid_from_address" });
+      const email = "phase1-e2e-invite-email-failed@forge.local";
+
+      const response = await request(app.getHttpServer())
+        .post("/api/v1/invitations")
+        .set("Cookie", `forge_session=${founderCookie}; forge_csrf=${founderCsrf}`)
+        .set("X-CSRF-Token", founderCsrf)
+        .send({ scope: "TEAM", email, userRole: "TEAM_MEMBER" });
+
+      expect(response.status).toBe(201);
+      expect(response.body.emailSent).toBe(false);
+      // The invitation itself is unaffected by the email failure — still usable.
+      expect(response.body.invitation.id).toBeTruthy();
+      expect(mockSentEmails).toHaveLength(0);
+
+      const prisma = app.get(PrismaService);
+      const row = await prisma.invitationToken.findUniqueOrThrow({
+        where: { id: response.body.invitation.id },
+      });
+      expect(row.token_hash).toHaveLength(64);
+
+      const failureEvent = await prisma.auditLog.findFirst({
+        where: { entity_type: "InvitationToken", entity_id: row.id, action: "invitation.email_failed" },
+      });
+      expect(failureEvent).not.toBeNull();
+
+      await prisma.invitationToken.delete({ where: { id: row.id } }).catch(() => undefined);
+    });
   });
 });

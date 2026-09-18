@@ -66,13 +66,13 @@ export function PortalLoginPage() {
         </div>
 
         {sessionExpired && (
-          <Alert variant="warning" title="Session Expired">
+          <Alert tone="warning" title="Session Expired">
             Your portal session has expired. Please sign in again to continue.
           </Alert>
         )}
 
         {generalError && (
-          <Alert variant="danger" title="Sign-in failed">
+          <Alert tone="danger" title="Sign-in failed">
             {generalError}
           </Alert>
         )}
@@ -100,10 +100,16 @@ export function PortalLoginPage() {
               disabled={loading}
               placeholder="client@company.com"
               aria-invalid={Boolean(fieldErrors.email)}
+              aria-describedby={fieldErrors.email ? "portal-email-error" : undefined}
               data-testid="portal-login-email-input"
             />
             {fieldErrors.email && (
-              <p className="mt-1 text-xs text-red-600" data-testid="portal-login-email-error">
+              <p
+                id="portal-email-error"
+                className="mt-1 text-xs text-red-600"
+                role="alert"
+                data-testid="portal-login-email-error"
+              >
                 {fieldErrors.email}
               </p>
             )}
@@ -130,10 +136,16 @@ export function PortalLoginPage() {
               }}
               disabled={loading}
               aria-invalid={Boolean(fieldErrors.password)}
+              aria-describedby={fieldErrors.password ? "portal-password-error" : undefined}
               data-testid="portal-login-password-input"
             />
             {fieldErrors.password && (
-              <p className="mt-1 text-xs text-red-600" data-testid="portal-login-password-error">
+              <p
+                id="portal-password-error"
+                className="mt-1 text-xs text-red-600"
+                role="alert"
+                data-testid="portal-login-password-error"
+              >
                 {fieldErrors.password}
               </p>
             )}
@@ -143,6 +155,7 @@ export function PortalLoginPage() {
             type="submit"
             className="w-full justify-center"
             disabled={loading}
+            loading={loading}
             data-testid="portal-login-submit-button"
           >
             {loading ? "Signing in…" : "Sign In to Portal"}

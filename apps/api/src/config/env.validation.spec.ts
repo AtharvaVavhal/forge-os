@@ -70,4 +70,47 @@ describe("validate (environment configuration)", () => {
     expect(result.PASSWORD_HASH_COST_FACTOR).toBe(13);
     expect(result.RATE_LIMIT_LOGIN_MAX).toBe(10);
   });
+
+  it("accepts optional R2 variables when all four are omitted", () => {
+    const result = validate(minimalValidConfig);
+    expect(result.R2_ACCOUNT_ID).toBeUndefined();
+  });
+
+  it("accepts a complete R2 credential set", () => {
+    const result = validate({
+      ...minimalValidConfig,
+      R2_ACCOUNT_ID: "acct",
+      R2_ACCESS_KEY_ID: "key",
+      R2_SECRET_ACCESS_KEY: "secret",
+      R2_BUCKET_NAME: "bucket",
+    });
+    expect(result.R2_ACCOUNT_ID).toBe("acct");
+    expect(result.R2_BUCKET_NAME).toBe("bucket");
+  });
+
+  it("accepts optional Resend variables when both are omitted", () => {
+    const result = validate(minimalValidConfig);
+    expect(result.RESEND_API_KEY).toBeUndefined();
+    expect(result.EMAIL_FROM).toBeUndefined();
+  });
+
+  it("accepts a complete Resend configuration", () => {
+    const result = validate({
+      ...minimalValidConfig,
+      RESEND_API_KEY: "re_test_key",
+      EMAIL_FROM: "FORGE <noreply@forgebuilds.in>",
+    });
+    expect(result.RESEND_API_KEY).toBe("re_test_key");
+    expect(result.EMAIL_FROM).toBe("FORGE <noreply@forgebuilds.in>");
+  });
+
+  it("accepts TRUST_PROXY and DOMAIN_EVENT_WORKER_ENABLED when set", () => {
+    const result = validate({
+      ...minimalValidConfig,
+      TRUST_PROXY: "1",
+      DOMAIN_EVENT_WORKER_ENABLED: "false",
+    });
+    expect(result.TRUST_PROXY).toBe("1");
+    expect(result.DOMAIN_EVENT_WORKER_ENABLED).toBe("false");
+  });
 });

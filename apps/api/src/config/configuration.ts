@@ -1,3 +1,5 @@
+import { resolveTrustProxyHops } from "../common/http/trust-proxy";
+
 export interface AppConfig {
   env: "development" | "test" | "production";
   port: number;
@@ -25,8 +27,19 @@ export interface AppConfig {
     secure: boolean;
   };
   storage: {
-    /** Optional dedicated HMAC secret for upload/download URL signatures. */
+    /**
+     * Legacy optional HMAC secret (B9 stub era). Unused once R2 SigV4
+     * presigning is configured — kept only so existing env files remain valid.
+     */
     signingSecret: string | undefined;
+    r2: {
+      accountId: string;
+      accessKeyId: string;
+      secretAccessKey: string;
+      bucketName: string;
+      /** True only when all four R2 credentials are set. */
+      configured: boolean;
+    };
   };
   google: {
     clientId: string | undefined;
@@ -50,6 +63,19 @@ export interface AppConfig {
      * verify signatures independently of order-creation being configured. */
     webhookConfigured: boolean;
   };
+  email: {
+    apiKey: string | undefined;
+    /** Verified sender address/display-name, e.g. `"FORGE <noreply@forgebuilds.in>"`.
+     * Never defaulted — production must configure a real, verified sender. */
+    from: string | undefined;
+    /** True only when both RESEND_API_KEY and EMAIL_FROM are set. */
+    configured: boolean;
+  };
+  /**
+   * Express `trust proxy` hop count (or false). Required for correct
+   * `req.ip` / rate limiting behind a reverse proxy. See trust-proxy.ts.
+   */
+  trustProxy: false | number;
 }
 
 /**
@@ -113,6 +139,27 @@ export default (): AppConfig => {
     },
     storage: {
       signingSecret: process.env.STORAGE_SIGNING_SECRET || undefined,
+      r2: (() => {
+        const accountId = process.env.R2_ACCOUNT_ID?.trim() || "";
+        const accessKeyId = process.env.R2_ACCESS_KEY_ID?.trim() || "";
+        const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY?.trim() || "";
+        const bucketName = process.env.R2_BUCKET_NAME?.trim() || "";
+        const present = [accountId, accessKeyId, secretAccessKey, bucketName].filter(Boolean);
+        // All-or-nothing: partial R2 config is a misconfiguration, not a soft disable.
+        if (present.length > 0 && present.length < 4) {
+          throw new Error(
+            "R2 configuration is incomplete. Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET_NAME together (or leave all unset)."
+          );
+        }
+        const configured = present.length === 4;
+        return {
+          accountId,
+          accessKeyId,
+          secretAccessKey,
+          bucketName,
+          configured,
+        };
+      })(),
     },
     google: {
       clientId: googleClientId,
@@ -147,5 +194,18 @@ export default (): AppConfig => {
       configured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
       webhookConfigured: Boolean(process.env.RAZORPAY_WEBHOOK_SECRET),
     },
+    email: (() => {
+      const apiKey = process.env.RESEND_API_KEY?.trim() || undefined;
+      const from = process.env.EMAIL_FROM?.trim() || undefined;
+      // All-or-nothing: partial email config is a misconfiguration, not a
+      // soft disable — same rule as R2 above (F10.2).
+      if ((apiKey && !from) || (!apiKey && from)) {
+        throw new Error(
+          "Email configuration is incomplete. Set RESEND_API_KEY and EMAIL_FROM together (or leave both unset)."
+        );
+      }
+      return { apiKey, from, configured: Boolean(apiKey && from) };
+    })(),
+    trustProxy: resolveTrustProxyHops(env, process.env.TRUST_PROXY),
   };
 };

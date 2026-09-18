@@ -1,0 +1,18 @@
+# Ignore local/dev artifacts when building the API image.
+.git
+.github
+.cursor
+**/node_modules
+**/dist
+**/.next
+**/coverage
+**/*.log
+.env
+.env.*
+!.env.example
+apps/web
+docs
+*.md
+!README.md
+agent-transcripts
+set-*-password.local.ts

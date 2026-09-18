@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "description": "FORGE Business OS — Next.js frontend. Phase 1 adds the authentication UI foundation on the Phase 0 App Router shell.",
+  "engines": {
+    "node": ">=20 <23"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

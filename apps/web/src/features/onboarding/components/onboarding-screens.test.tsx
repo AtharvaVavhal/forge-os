@@ -63,6 +63,26 @@ describe("GateScreen", () => {
     expect(assign).toHaveBeenCalledWith("/api/v1/auth/google/start");
     vi.unstubAllGlobals();
   });
+
+  it("does not render the raw invitation token or persist it", async () => {
+    const rawToken = "super-secret-invite-token-xyz";
+    mockPreview.mockResolvedValue({
+      email: "priya@forgebuilds.in",
+      role: "TEAM_MEMBER",
+      inviterName: "Atharva",
+      organizationName: "FORGE",
+    });
+
+    const { queryClient } = renderWithQuery(<GateScreen token={rawToken} />);
+    await screen.findByRole("heading", { name: /you've been invited to forge/i });
+
+    expect(screen.queryByText(rawToken)).not.toBeInTheDocument();
+    expect(window.localStorage?.getItem(rawToken) ?? null).toBeNull();
+    expect(window.sessionStorage?.getItem(rawToken) ?? null).toBeNull();
+    expect(JSON.stringify([...queryClient.getQueryCache().getAll().map((q) => q.queryKey)])).not.toContain(
+      rawToken
+    );
+  });
 });
 
 describe("MirrorScreen", () => {

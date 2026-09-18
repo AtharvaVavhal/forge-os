@@ -14,6 +14,7 @@ import { Throttle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
 import type { AppConfig } from "../../../config/configuration";
 import { NoStoreCacheInterceptor } from "../../../common/interceptors/no-store-cache.interceptor";
+import { resolveWebAppOrigin } from "../../../common/http/web-app-origin";
 import { PrismaService } from "../../../database/prisma.service";
 import { AuditService, AUDIT_ACTIONS } from "../../shared/audit.service";
 import { OrganizationContextService } from "../../shared/organization-context.service";
@@ -201,7 +202,6 @@ export class AuthController {
 
   /** Browser SSO returns land on the first configured CORS origin (the web app). */
   private webAppOrigin(): string {
-    const origins = this.config.get("cors.origins", { infer: true });
-    return (origins[0] ?? "http://localhost:3000").replace(/\/$/, "");
+    return resolveWebAppOrigin(this.config.get("cors.origins", { infer: true }));
   }
 }

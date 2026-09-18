@@ -29,3 +29,12 @@ export interface OffsetList<T> {
 
 export const INVITATION_SCOPES = ["TEAM", "CLIENT"] as const;
 export type InvitationScope = (typeof INVITATION_SCOPES)[number];
+
+/** Safe subset of POST /invitations — never includes a raw token. */
+export interface CreateInvitationResult {
+  invitation: {
+    id: string;
+    email: string;
+  };
+  emailSent: boolean;
+}

@@ -3,7 +3,7 @@ import { ValidationPipe } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { NestFactory } from "@nestjs/core";
 import cookieParser from "cookie-parser";
-import { json, urlencoded } from "express";
+import { json, urlencoded, type Express } from "express";
 import helmet from "helmet";
 import { AppModule } from "./app.module";
 import { rawBodySaver } from "./common/http/raw-body";
@@ -38,6 +38,15 @@ async function bootstrap(): Promise<void> {
   // `portal_session` (Document 6 §5.1). No session/JWT validation exists
   // yet — that is Phase 1. See src/common/guards/README.md.
   app.use(cookieParser());
+
+  // --- Trust proxy (F10.4) -------------------------------------------------
+  // When the API sits behind a single reverse proxy / load balancer,
+  // Express must trust that one hop so `req.ip` (and therefore @nestjs/throttler)
+  // reflects the client, not the proxy. Never set to `true` (trust all).
+  // See resolveTrustProxyHops / TRUST_PROXY in .env.example.
+  const trustProxy = configService.get("trustProxy", { infer: true });
+  const expressApp = app.getHttpAdapter().getInstance() as Express;
+  expressApp.set("trust proxy", trustProxy);
 
   // --- CORS -----------------------------------------------------------------
   // `credentials: true` because the frozen session design is httpOnly

@@ -6,5 +6,14 @@
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },
-  "setupFiles": ["reflect-metadata"]
+  "setupFiles": [
+    "reflect-metadata",
+    "<rootDir>/support/mock-r2.ts",
+    "<rootDir>/support/mock-resend.ts"
+  ],
+  "moduleNameMapper": {
+    "^@aws-sdk/client-s3$": "<rootDir>/__mocks__/@aws-sdk/client-s3.ts",
+    "^@aws-sdk/s3-request-presigner$": "<rootDir>/__mocks__/@aws-sdk/s3-request-presigner.ts",
+    "^resend$": "<rootDir>/__mocks__/resend.ts"
+  }
 }
