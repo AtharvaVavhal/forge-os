@@ -92,11 +92,11 @@ async function main() {
   }
 
   const users: { email: string; name: string; role: UserRole }[] = [
-    { email: "founder@forge.local", name: "Founder Admin", role: UserRole.FOUNDER_ADMIN },
-    { email: "operations@forge.local", name: "Operations", role: UserRole.OPERATIONS },
-    { email: "finance@forge.local", name: "Finance", role: UserRole.FINANCE },
-    { email: "sales@forge.local", name: "Sales", role: UserRole.SALES },
-    { email: "team@forge.local", name: "Team Member", role: UserRole.TEAM_MEMBER },
+    { email: "atharva.vavhal@forgebuilds.in", name: "Atharva Vavhal", role: UserRole.FOUNDER_ADMIN },
+    { email: "atharv.jadhav@forgebuilds.in", name: "Atharva Jadhav", role: UserRole.TEAM_MEMBER },
+    { email: "harshad.gat@forgebuilds.in", name: "Harshad Gat", role: UserRole.TEAM_MEMBER },
+    { email: "shrikant.salunkhe@forgebuilds.in", name: "Shrikant Salunkhe", role: UserRole.TEAM_MEMBER },
+    { email: "sharwari.patil@forgebuilds.in", name: "Sharwari Patil", role: UserRole.TEAM_MEMBER },
   ];
 
   for (const u of users) {
