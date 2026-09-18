@@ -43,7 +43,6 @@ COPY --from=build --chown=forge:forge /app/package.json /app/package-lock.json .
 COPY --from=build --chown=forge:forge /app/node_modules ./node_modules
 COPY --from=build --chown=forge:forge /app/apps/api/package.json ./apps/api/
 COPY --from=build --chown=forge:forge /app/apps/api/dist ./apps/api/dist
-COPY --from=build --chown=forge:forge /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=build --chown=forge:forge /app/packages ./packages
 COPY --from=build --chown=forge:forge /app/prisma ./prisma
 USER forge
