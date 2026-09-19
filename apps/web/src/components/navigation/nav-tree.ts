@@ -37,8 +37,9 @@ const TIME_ENTRY_ROLES = [
 const ADMIN_ROLES = ["FOUNDER_ADMIN"] as const satisfies readonly UserRole[];
 
 /**
- * Frozen Phase 2 workspace navigation. Payouts, Integrations, Templates,
- * and Saved Views are intentionally omitted.
+ * Frozen Phase 2 workspace navigation, extended by K11/K12 (Project
+ * Allocations, Withdrawals). Integrations, Templates, and Saved Views are
+ * still intentionally omitted.
  */
 export const NAV_TREE: NavGroup[] = [
   {
@@ -173,6 +174,22 @@ export const NAV_TREE: NavGroup[] = [
         label: "KYC Review",
         href: "/finance/kyc",
         icon: "members",
+        visibleTo: FINANCE_ROLES,
+        permission: "finance.manage",
+      },
+      {
+        id: "project-allocations",
+        label: "Project Allocations",
+        href: "/finance/project-allocations",
+        icon: "invoices",
+        visibleTo: FINANCE_ROLES,
+        permission: "finance.read",
+      },
+      {
+        id: "withdrawals",
+        label: "Withdrawals",
+        href: "/finance/withdrawals",
+        icon: "payments",
         visibleTo: FINANCE_ROLES,
         permission: "finance.manage",
       },

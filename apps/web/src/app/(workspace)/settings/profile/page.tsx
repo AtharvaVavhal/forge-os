@@ -8,8 +8,9 @@ import { Tabs, TabPanel } from "@/components/data-display/tabs";
 import { useAuthorization } from "@/features/auth/authorization/authorization-context";
 import { PayoutSettingsPanel } from "@/features/team/components/payout-settings-panel";
 import { KycStatusPanel } from "@/features/onboarding/components/kyc-status-panel";
+import { TeamEarningsTab } from "@/features/earnings/components/team-earnings-tab";
 
-const TEAM_MEMBER_TAB_IDS = new Set(["profile", "verification", "payout"]);
+const TEAM_MEMBER_TAB_IDS = new Set(["profile", "verification", "earnings", "payout"]);
 
 export default function ProfilePage() {
   const { role } = useAuthorization();
@@ -27,6 +28,7 @@ export default function ProfilePage() {
     ? [
         { id: "profile", label: "Profile" },
         { id: "verification", label: "Verification" },
+        { id: "earnings", label: "Earnings" },
         { id: "payout", label: "Payout" },
       ]
     : [{ id: "profile", label: "Profile" }];
@@ -46,6 +48,9 @@ export default function ProfilePage() {
         <>
           <TabPanel id="verification" active={tab === "verification"}>
             <KycStatusPanel />
+          </TabPanel>
+          <TabPanel id="earnings" active={tab === "earnings"}>
+            <TeamEarningsTab />
           </TabPanel>
           <TabPanel id="payout" active={tab === "payout"}>
             <PayoutSettingsPanel />

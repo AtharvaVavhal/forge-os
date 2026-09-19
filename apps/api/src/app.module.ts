@@ -18,6 +18,7 @@ import { SalesModule } from "./modules/sales/sales.module";
 import { ProjectsModule } from "./modules/projects/projects.module";
 import { FinanceModule } from "./modules/finance/finance.module";
 import { TeamModule } from "./modules/team/team.module";
+import { EarningsModule } from "./modules/earnings/earnings.module";
 import { PortalModule } from "./modules/portal/portal.module";
 import { PortalAuthGuard } from "./modules/portal/guards/portal-auth.guard";
 import { OutboxModule } from "./modules/outbox/outbox.module";
@@ -57,6 +58,7 @@ import { OutboxModule } from "./modules/outbox/outbox.module";
     ProjectsModule,
     FinanceModule,
     TeamModule,
+    EarningsModule,
     PortalModule,
     OutboxModule,
   ],
