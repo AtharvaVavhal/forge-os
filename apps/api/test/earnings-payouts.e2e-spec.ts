@@ -11,6 +11,7 @@ import {
   createEarningsPayment,
   createEarningsProject,
   earningsMutateHeaders,
+  seedVerifiedKyc,
   upsertCompletePayoutProfile,
 } from "./support/earnings";
 import { PrismaService } from "../src/database/prisma.service";
@@ -89,6 +90,7 @@ describe("K12 — Team Earnings, Withdrawals & Payouts (e2e)", () => {
     it("recovery owed is floored at zero on the member's own Available, and future earnings transparently offset it", async () => {
       const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-recovery" });
       await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
       const { allocationId } = await grantApprovedEarnings(beneficiary, "5000.00");
 
       // Withdraw and pay out the full 5000.
@@ -150,6 +152,7 @@ describe("K12 — Team Earnings, Withdrawals & Payouts (e2e)", () => {
   describe("withdrawal creation", () => {
     it("requires a complete payout profile", async () => {
       const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-no-profile" });
+      await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
       await grantApprovedEarnings(beneficiary, "1000.00");
       const response = await request(app.getHttpServer())
         .post("/api/v1/team/payouts")
@@ -162,6 +165,7 @@ describe("K12 — Team Earnings, Withdrawals & Payouts (e2e)", () => {
     it("an exact-balance withdrawal succeeds", async () => {
       const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-exact" });
       await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
       await grantApprovedEarnings(beneficiary, "1500.00");
       const response = await request(app.getHttpServer())
         .post("/api/v1/team/payouts")
@@ -179,6 +183,7 @@ describe("K12 — Team Earnings, Withdrawals & Payouts (e2e)", () => {
     it("an over-balance withdrawal is rejected", async () => {
       const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-over" });
       await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
       await grantApprovedEarnings(beneficiary, "500.00");
       const response = await request(app.getHttpServer())
         .post("/api/v1/team/payouts")
@@ -191,6 +196,7 @@ describe("K12 — Team Earnings, Withdrawals & Payouts (e2e)", () => {
     it("simultaneous withdrawal requests cannot jointly overdraw Available", async () => {
       const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-concurrent" });
       await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
       await grantApprovedEarnings(beneficiary, "3000.00");
 
       const [first, second] = await Promise.all([
@@ -210,6 +216,7 @@ describe("K12 — Team Earnings, Withdrawals & Payouts (e2e)", () => {
     it("a duplicate withdrawal request with the same Idempotency-Key replays the original response, not a second row", async () => {
       const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-idempotent" });
       await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
       await grantApprovedEarnings(beneficiary, "1000.00");
       const key = randomUUID();
 
@@ -232,6 +239,7 @@ describe("K12 — Team Earnings, Withdrawals & Payouts (e2e)", () => {
     it("cannot address another member's payout by id — 404, not 403", async () => {
       const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-owner" });
       await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
       await grantApprovedEarnings(beneficiary, "800.00");
       const created = await request(app.getHttpServer())
         .post("/api/v1/team/payouts")
@@ -270,6 +278,7 @@ describe("K12 — Team Earnings, Withdrawals & Payouts (e2e)", () => {
     it("destination_snapshot is captured once at creation and never mutated by a later PayoutProfile change", async () => {
       const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-snapshot" });
       await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId, { accountNumber: "111100002222" });
+      await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
       await grantApprovedEarnings(beneficiary, "700.00");
       const created = await request(app.getHttpServer())
         .post("/api/v1/team/payouts")
@@ -278,6 +287,7 @@ describe("K12 — Team Earnings, Withdrawals & Payouts (e2e)", () => {
       expect(created.body.destination.accountNumber).toBe("111100002222");
 
       await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId, { accountNumber: "999988887777" });
+      await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
 
       const financeView = await request(app.getHttpServer())
         .get(`/api/v1/payouts/${created.body.id}`)
@@ -291,10 +301,115 @@ describe("K12 — Team Earnings, Withdrawals & Payouts (e2e)", () => {
     });
   });
 
+  describe("KYC required for withdrawal (Phase 3 of the K5 onboarding redesign)", () => {
+    it("a member with no KYC profile at all cannot withdraw", async () => {
+      const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-kyc-none" });
+      await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      await grantApprovedEarnings(beneficiary, "1000.00");
+
+      const response = await request(app.getHttpServer())
+        .post("/api/v1/team/payouts")
+        .set(earningsMutateHeaders(beneficiary))
+        .send({ amount: "500.00" });
+      expect(response.status).toBe(409);
+      expect(response.body.error.code).toBe("KYC_REQUIRED_FOR_WITHDRAWAL");
+      expect(response.body.error.details.missing).toEqual(
+        expect.arrayContaining(["kyc_status", "PAN_CARD", "GOVERNMENT_ID"])
+      );
+    });
+
+    it.each(["NOT_STARTED", "DRAFT", "SUBMITTED", "UNDER_REVIEW", "REJECTED"] as const)(
+      "a member with KYC status %s (not VERIFIED) cannot withdraw",
+      async (status) => {
+        const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: `k12-kyc-${status.toLowerCase()}` });
+        await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+        await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
+        // Downgrade the freshly-verified profile to the status under test.
+        await app.get(PrismaService).kycProfile.update({
+          where: { user_id: beneficiary.userId },
+          data: { status, verified_at: null },
+        });
+        await grantApprovedEarnings(beneficiary, "1000.00");
+
+        const response = await request(app.getHttpServer())
+          .post("/api/v1/team/payouts")
+          .set(earningsMutateHeaders(beneficiary))
+          .send({ amount: "500.00" });
+        expect(response.status).toBe(409);
+        expect(response.body.error.code).toBe("KYC_REQUIRED_FOR_WITHDRAWAL");
+      }
+    );
+
+    it("VERIFIED KYC missing the PAN document cannot withdraw", async () => {
+      const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-kyc-nopan" });
+      await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
+      const prisma = app.get(PrismaService);
+      const profile = await prisma.kycProfile.findUniqueOrThrow({ where: { user_id: beneficiary.userId } });
+      await prisma.kycDocument.updateMany({
+        where: { kyc_profile_id: profile.id, document_type: "PAN_CARD" },
+        data: { status: "REMOVED" },
+      });
+      await grantApprovedEarnings(beneficiary, "1000.00");
+
+      const response = await request(app.getHttpServer())
+        .post("/api/v1/team/payouts")
+        .set(earningsMutateHeaders(beneficiary))
+        .send({ amount: "500.00" });
+      expect(response.status).toBe(409);
+      expect(response.body.error.code).toBe("KYC_REQUIRED_FOR_WITHDRAWAL");
+      expect(response.body.error.details.missing).toEqual(["PAN_CARD"]);
+    });
+
+    it("VERIFIED KYC missing the government ID document cannot withdraw", async () => {
+      const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-kyc-nogov" });
+      await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
+      const prisma = app.get(PrismaService);
+      const profile = await prisma.kycProfile.findUniqueOrThrow({ where: { user_id: beneficiary.userId } });
+      await prisma.kycDocument.updateMany({
+        where: { kyc_profile_id: profile.id, document_type: "GOVERNMENT_ID" },
+        data: { status: "REMOVED" },
+      });
+      await grantApprovedEarnings(beneficiary, "1000.00");
+
+      const response = await request(app.getHttpServer())
+        .post("/api/v1/team/payouts")
+        .set(earningsMutateHeaders(beneficiary))
+        .send({ amount: "500.00" });
+      expect(response.status).toBe(409);
+      expect(response.body.error.code).toBe("KYC_REQUIRED_FOR_WITHDRAWAL");
+      expect(response.body.error.details.missing).toEqual(["GOVERNMENT_ID"]);
+    });
+
+    it("VERIFIED KYC with both documents present can withdraw", async () => {
+      const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-kyc-verified" });
+      await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
+      await grantApprovedEarnings(beneficiary, "1000.00");
+
+      const response = await request(app.getHttpServer())
+        .post("/api/v1/team/payouts")
+        .set(earningsMutateHeaders(beneficiary))
+        .send({ amount: "500.00" });
+      expect(response.status).toBe(201);
+    });
+
+    it("does not change K11/K12 accounting semantics — Available/Pending/RecoveryOwed math is identical regardless of KYC status", async () => {
+      const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-kyc-accounting" });
+      await grantApprovedEarnings(beneficiary, "1000.00");
+      // No KYC, no payout profile at all — the balance endpoint itself has no KYC gate on it, only withdrawal creation does.
+      const summary = await request(app.getHttpServer()).get("/api/v1/team/earnings").set(authHeaders(beneficiary));
+      expect(summary.status).toBe(200);
+      expect(summary.body).toEqual({ available: "1000.00", pending: "0.00", lifetimeEarned: "1000.00", lifetimePaid: "0.00" });
+    });
+  });
+
   describe("Finance review pipeline", () => {
     async function createPendingPayout(amount = "1000.00"): Promise<{ beneficiary: AuthSession; payoutId: string }> {
       const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: `k12-pipeline-${Date.now()}` });
       await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
       await grantApprovedEarnings(beneficiary, amount);
       const created = await request(app.getHttpServer())
         .post("/api/v1/team/payouts")
@@ -460,6 +575,7 @@ describe("K12 — Team Earnings, Withdrawals & Payouts (e2e)", () => {
     it("no recovery: recoveryOwed is 0.00 when paid does not exceed net earned", async () => {
       const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-recovery-none" });
       await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
       await grantApprovedEarnings(beneficiary, "1000.00");
       const created = await request(app.getHttpServer())
         .post("/api/v1/team/payouts")
@@ -483,6 +599,7 @@ describe("K12 — Team Earnings, Withdrawals & Payouts (e2e)", () => {
     it("partial recovery: a downward correction leaves recoveryOwed at the shortfall, never as a negative available balance", async () => {
       const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-recovery-partial" });
       await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
       const { allocationId } = await grantApprovedEarnings(beneficiary, "5000.00");
       const payoutReq = await request(app.getHttpServer())
         .post("/api/v1/team/payouts")
@@ -520,6 +637,7 @@ describe("K12 — Team Earnings, Withdrawals & Payouts (e2e)", () => {
     it("full recovery: correcting earnings all the way to zero makes recoveryOwed equal the entire amount paid", async () => {
       const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-recovery-full" });
       await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
       const { allocationId } = await grantApprovedEarnings(beneficiary, "5000.00");
       const payoutReq = await request(app.getHttpServer())
         .post("/api/v1/team/payouts")
@@ -555,6 +673,7 @@ describe("K12 — Team Earnings, Withdrawals & Payouts (e2e)", () => {
     it("future earnings transparently reduce recoveryOwed, with no direct cash clawback endpoint or field", async () => {
       const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-recovery-offset" });
       await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
       const { allocationId } = await grantApprovedEarnings(beneficiary, "5000.00");
       const payoutReq = await request(app.getHttpServer())
         .post("/api/v1/team/payouts")
@@ -601,6 +720,7 @@ describe("K12 — Team Earnings, Withdrawals & Payouts (e2e)", () => {
     it("the member's own payout view never includes memberBalance or recoveryOwed", async () => {
       const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-recovery-hidden" });
       await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      await seedVerifiedKyc(app, finance.organizationId, beneficiary.userId);
       await grantApprovedEarnings(beneficiary, "1000.00");
       const created = await request(app.getHttpServer())
         .post("/api/v1/team/payouts")

@@ -3,6 +3,34 @@ import { KYC_GOVERNMENT_ID_TYPES } from "../api/types";
 
 const panPattern = /^[A-Z]{5}[0-9]{4}[A-Z]$/i;
 
+/**
+ * K5 onboarding redesign — the lightweight "Personal Profile" onboarding
+ * step. Deliberately just a phone number: the member's name already comes
+ * from Google Workspace SSO (shown, not re-asked), and legal name/DOB/
+ * address move to the standalone Financial Verification flow (see
+ * `personalFormSchema` below, unchanged, still used there).
+ */
+export const profileFormSchema = z.object({
+  mobile: z
+    .string()
+    .trim()
+    .min(8, "Enter a valid mobile number.")
+    .max(20, "Enter a valid mobile number."),
+});
+
+export type ProfileFormValues = z.infer<typeof profileFormSchema>;
+
+/** K5 onboarding redesign — the "Work Profile" onboarding step. Every field is optional; this is never gated on. */
+export const workFormSchema = z.object({
+  jobTitle: z.string().trim().max(150).optional(),
+  primaryArea: z.string().trim().max(150).optional(),
+  skills: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+  bio: z.string().trim().max(500).optional(),
+});
+
+export type WorkFormValues = z.infer<typeof workFormSchema>;
+
+/** Financial Verification flow only (post-onboarding, gated at first withdrawal) — legal identity fields KYC needs. */
 export const personalFormSchema = z.object({
   legalName: z.string().trim().min(1, "Legal name is required.").max(200),
   dateOfBirth: z.string().min(1, "Date of birth is required."),

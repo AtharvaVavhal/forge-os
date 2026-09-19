@@ -1,56 +1,27 @@
 import { describe, expect, it } from "vitest";
-import {
-  isDocumentsComplete,
-  isIdentityComplete,
-  isKycEditable,
-  isPersonalComplete,
-  isPayoutComplete,
-  resolveTeamOnboardingStep,
-} from "./resume";
+import { isPersonalComplete, isPayoutComplete, resolveTeamOnboardingStep } from "./resume";
 import type { KycProfile, PayoutProfile } from "../api/types";
-import { maskAccountNumber, maskIfsc, maskPan, maskUpi } from "./mask";
 
 function kyc(overrides: Partial<KycProfile> = {}): KycProfile {
   return {
     id: "kyc-1",
     status: "DRAFT",
-    legalName: "Priya Sharma",
-    dateOfBirth: "1995-04-12",
+    legalName: null,
+    dateOfBirth: null,
     mobile: "+919876543210",
-    addressLine1: "12 Forge Lane",
+    addressLine1: null,
     addressLine2: null,
-    city: "Bengaluru",
-    state: "Karnataka",
-    postalCode: "560001",
-    pan: "ABCDE1234F",
-    governmentIdType: "AADHAAR",
-    governmentIdNumber: "123456789012",
+    city: null,
+    state: null,
+    postalCode: null,
+    pan: null,
+    governmentIdType: null,
+    governmentIdNumber: null,
     submittedAt: null,
     verifiedAt: null,
     rejectedAt: null,
     rejectionReason: null,
-    documents: [
-      {
-        id: "d1",
-        documentType: "PAN_CARD",
-        filename: "pan.pdf",
-        mimeType: "application/pdf",
-        sizeBytes: 1000,
-        status: "UPLOADED",
-        createdAt: null,
-        updatedAt: null,
-      },
-      {
-        id: "d2",
-        documentType: "GOVERNMENT_ID",
-        filename: "aadhaar.pdf",
-        mimeType: "application/pdf",
-        sizeBytes: 1000,
-        status: "UPLOADED",
-        createdAt: null,
-        updatedAt: null,
-      },
-    ],
+    documents: [],
     createdAt: null,
     updatedAt: null,
     ...overrides,
@@ -79,99 +50,39 @@ function payout(overrides: Partial<PayoutProfile> = {}): PayoutProfile {
   };
 }
 
-describe("resume helpers", () => {
-  it("detects personal / identity / documents / payout completeness", () => {
+describe("K5 onboarding resume helpers", () => {
+  it("personal completeness is just a phone number — no legal name, DOB, address, PAN, or documents", () => {
     expect(isPersonalComplete(null)).toBe(false);
+    expect(isPersonalComplete(kyc({ mobile: null }))).toBe(false);
+    expect(isPersonalComplete(kyc({ mobile: "" }))).toBe(false);
     expect(isPersonalComplete(kyc())).toBe(true);
-    expect(isPersonalComplete(kyc({ legalName: null }))).toBe(false);
+  });
 
-    expect(isIdentityComplete(kyc())).toBe(true);
-    expect(isIdentityComplete(kyc({ pan: null }))).toBe(false);
-
-    expect(isDocumentsComplete(kyc())).toBe(true);
-    expect(
-      isDocumentsComplete(
-        kyc({
-          documents: [
-            {
-              id: "d1",
-              documentType: "PAN_CARD",
-              filename: "pan.pdf",
-              mimeType: "application/pdf",
-              sizeBytes: 1,
-              status: "REMOVED",
-              createdAt: null,
-              updatedAt: null,
-            },
-          ],
-        })
-      )
-    ).toBe(false);
-
+  it("payout completeness is unchanged — bank fields, UPI ID, and a registered UPI QR are all required", () => {
     expect(isPayoutComplete(payout())).toBe(true);
     expect(isPayoutComplete(payout({ configured: false }))).toBe(false);
     expect(isPayoutComplete(payout({ upiId: null }))).toBe(false);
-    expect(
-      isPayoutComplete(
-        payout({
-          upiQr: { uploaded: false, filename: null, mimeType: null, sizeBytes: null },
-        })
-      )
-    ).toBe(false);
+    expect(isPayoutComplete(payout({ upiQr: { uploaded: false, filename: null, mimeType: null, sizeBytes: null } }))).toBe(
+      false
+    );
     expect(isPayoutComplete(payout({ accountNumber: null }))).toBe(false);
   });
 
-  it("resumes to the first incomplete step", () => {
-    expect(resolveTeamOnboardingStep(null, null)).toBe("personal");
-    expect(resolveTeamOnboardingStep(kyc({ legalName: null }), null)).toBe("personal");
-    expect(resolveTeamOnboardingStep(kyc({ pan: null }), null)).toBe("identity");
-    expect(
-      resolveTeamOnboardingStep(
-        kyc({
-          documents: [],
-        }),
-        null
-      )
-    ).toBe("documents");
+  it("a member with no KycProfile row and no payout profile at all resumes to 'welcome'", () => {
+    expect(resolveTeamOnboardingStep(null, null)).toBe("welcome");
+    expect(resolveTeamOnboardingStep(null, payout({ configured: false }))).toBe("welcome");
+  });
+
+  it("resumes to the first incomplete required step once anything is saved (never 'work', which is optional)", () => {
+    expect(resolveTeamOnboardingStep(kyc({ mobile: null }), null)).toBe("profile");
     expect(resolveTeamOnboardingStep(kyc(), null)).toBe("payout");
     expect(resolveTeamOnboardingStep(kyc(), payout())).toBe("review");
   });
 
-  it("sends submitted / under-review / verified to orientation", () => {
-    expect(resolveTeamOnboardingStep(kyc({ status: "SUBMITTED" }), payout())).toBe(
-      "orientation"
-    );
-    expect(resolveTeamOnboardingStep(kyc({ status: "UNDER_REVIEW" }), payout())).toBe(
-      "orientation"
-    );
-    expect(resolveTeamOnboardingStep(kyc({ status: "VERIFIED" }), payout())).toBe(
-      "orientation"
-    );
-  });
-
-  it("routes rejected KYC to rejected step", () => {
-    expect(
-      resolveTeamOnboardingStep(
-        kyc({ status: "REJECTED", rejectionReason: "Blurry documents" }),
-        payout()
-      )
-    ).toBe("rejected");
-  });
-
-  it("marks submitted states as not editable", () => {
-    expect(isKycEditable("DRAFT")).toBe(true);
-    expect(isKycEditable("REJECTED")).toBe(true);
-    expect(isKycEditable("UNDER_REVIEW")).toBe(false);
-    expect(isKycEditable("SUBMITTED")).toBe(false);
-    expect(isKycEditable("VERIFIED")).toBe(false);
-  });
-});
-
-describe("mask helpers", () => {
-  it("masks PAN, account, UPI, and IFSC", () => {
-    expect(maskPan("ABCDE1234F")).toBe("XXXXX1234F");
-    expect(maskAccountNumber("123456789012")).toBe("••••••9012");
-    expect(maskUpi("priya@okhdfcbank")).toBe("p•••@okhdfcbank");
-    expect(maskIfsc("HDFC0001234")).toBe("HDFC••••••34");
+  it("KYC status never influences the resume target — every status behaves identically", () => {
+    for (const status of ["NOT_STARTED", "DRAFT", "SUBMITTED", "UNDER_REVIEW", "VERIFIED", "REJECTED"] as const) {
+      expect(resolveTeamOnboardingStep(kyc({ status }), payout())).toBe("review");
+      expect(resolveTeamOnboardingStep(kyc({ status, mobile: null }), payout())).toBe("profile");
+    }
   });
 });

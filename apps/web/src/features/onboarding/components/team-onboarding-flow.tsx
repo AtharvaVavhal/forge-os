@@ -9,32 +9,30 @@ import { queryErrorMessage } from "@/lib/api/query-error";
 import {
   getOwnKycProfile,
   getOwnPayoutProfile,
-  removeKycDocument,
+  getOwnWorkProfile,
   removeUpiQr,
   saveKycProfile,
-  submitKycProfile,
-  uploadKycDocument,
-  uploadUpiQr,
   upsertPayoutProfile,
+  upsertWorkProfile,
+  uploadUpiQr,
 } from "../api/kyc-api";
 import { onboardingQueryKeys } from "../api/query-keys";
-import type { KycDocumentType } from "../api/types";
 import {
-  isKycEditable,
+  TEAM_ONBOARDING_PROGRESS_STEPS,
   resolveTeamOnboardingStep,
   type TeamOnboardingStep,
 } from "../lib/resume";
-import type { PersonalFormValues, IdentityFormValues, PayoutFormValues } from "../schemas/forms";
+import type { PayoutFormValues, ProfileFormValues, WorkFormValues } from "../schemas/forms";
 import { MirrorScreen } from "./mirror-screen";
 import { OrientationScreen } from "./orientation-screen";
-import { PersonalStep } from "./steps/personal-step";
-import { IdentityStep } from "./steps/identity-step";
-import { DocumentsStep } from "./steps/documents-step";
+import { StepTransition } from "./motion/step-transition";
+import { WelcomeStep } from "./steps/welcome-step";
+import { ProfileStep } from "./steps/profile-step";
+import { WorkStep } from "./steps/work-step";
 import { PayoutStep } from "./steps/payout-step";
-import { ReviewStep } from "./steps/review-step";
-import { RejectedStep, SubmittedStep } from "./steps/status-steps";
+import { OnboardingReviewStep } from "./steps/onboarding-review-step";
 
-type Phase = "mirror" | "kyc" | "departing";
+type Phase = "mirror" | "onboarding" | "departing";
 
 function LoadingState() {
   return (
@@ -64,7 +62,14 @@ function LoadError({ message, onRetry }: { message: string; onRetry: () => void 
   );
 }
 
-export function TeamOnboardingFlow({ name }: { name: string }) {
+/**
+ * K5 onboarding redesign — Google Workspace auth → Welcome → Personal
+ * Profile → Work Profile → Payout → Review → Success → Enter Forge. No KYC
+ * (PAN/government ID/documents/Finance review) anywhere in this flow —
+ * that now lives in the standalone Financial Verification flow, gated at
+ * first withdrawal instead of at onboarding (see `../lib/resume.ts`).
+ */
+export function TeamOnboardingFlow({ name, email }: { name: string; email: string }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [phase, setPhase] = useState<Phase>("mirror");
@@ -77,7 +82,7 @@ export function TeamOnboardingFlow({ name }: { name: string }) {
   const kycQuery = useQuery({
     queryKey: onboardingQueryKeys.kyc(),
     queryFn: getOwnKycProfile,
-    enabled: phase === "kyc",
+    enabled: phase === "onboarding",
     staleTime: 0,
     gcTime: 0,
   });
@@ -85,51 +90,57 @@ export function TeamOnboardingFlow({ name }: { name: string }) {
   const payoutQuery = useQuery({
     queryKey: onboardingQueryKeys.payout(),
     queryFn: getOwnPayoutProfile,
-    enabled: phase === "kyc",
+    enabled: phase === "onboarding",
+    staleTime: 0,
+    gcTime: 0,
+  });
+
+  const workQuery = useQuery({
+    queryKey: onboardingQueryKeys.work(),
+    queryFn: getOwnWorkProfile,
+    enabled: phase === "onboarding",
     staleTime: 0,
     gcTime: 0,
   });
 
   const kyc = kycQuery.data ?? null;
   const payout = payoutQuery.data ?? null;
-  const editable = isKycEditable(kyc?.status);
+  const work = workQuery.data ?? null;
 
   const resumedStep =
-    kycQuery.isSuccess && payoutQuery.isSuccess
-      ? resolveTeamOnboardingStep(kycQuery.data ?? null, payoutQuery.data ?? null)
-      : null;
+    kycQuery.isSuccess && payoutQuery.isSuccess ? resolveTeamOnboardingStep(kyc, payout) : null;
 
   const step = manualStep ?? resumedStep;
+  const currentIndex = step
+    ? TEAM_ONBOARDING_PROGRESS_STEPS.findIndex((entry) => entry.id === step)
+    : -1;
 
   const invalidateProfiles = useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: onboardingQueryKeys.kyc() }),
       queryClient.invalidateQueries({ queryKey: onboardingQueryKeys.payout() }),
+      queryClient.invalidateQueries({ queryKey: onboardingQueryKeys.work() }),
     ]);
   }, [queryClient]);
 
-  const savePersonal = useMutation({
-    mutationFn: (values: PersonalFormValues) => saveKycProfile(values),
+  const saveProfile = useMutation({
+    mutationFn: (values: ProfileFormValues) => saveKycProfile(values),
     onSuccess: async () => {
       setActionError(null);
       await invalidateProfiles();
-      setManualStep("identity");
+      setManualStep("work");
     },
     onError: () => {
       setActionError("Something went wrong while saving your information.");
     },
   });
 
-  const saveIdentity = useMutation({
-    mutationFn: (values: IdentityFormValues) =>
-      saveKycProfile({
-        ...values,
-        pan: values.pan.toUpperCase(),
-      }),
+  const saveWork = useMutation({
+    mutationFn: (values: WorkFormValues) => upsertWorkProfile(values),
     onSuccess: async () => {
       setActionError(null);
       await invalidateProfiles();
-      setManualStep("documents");
+      setManualStep("payout");
     },
     onError: () => {
       setActionError("Something went wrong while saving your information.");
@@ -157,18 +168,6 @@ export function TeamOnboardingFlow({ name }: { name: string }) {
     },
   });
 
-  const submitKyc = useMutation({
-    mutationFn: submitKycProfile,
-    onSuccess: async () => {
-      setActionError(null);
-      await invalidateProfiles();
-      setManualStep("submitted");
-    },
-    onError: () => {
-      setActionError("Something went wrong while submitting for verification.");
-    },
-  });
-
   const complete = useMutation({
     mutationFn: completeOnboarding,
     onSuccess: async () => {
@@ -184,7 +183,7 @@ export function TeamOnboardingFlow({ name }: { name: string }) {
 
   const goMirrorAdvance = useCallback(() => {
     setManualStep(null);
-    setPhase("kyc");
+    setPhase("onboarding");
   }, []);
 
   async function handleUploadQr(file: File) {
@@ -255,132 +254,115 @@ export function TeamOnboardingFlow({ name }: { name: string }) {
     );
   }
 
-  if (kycQuery.isError || payoutQuery.isError) {
+  if (kycQuery.isError || payoutQuery.isError || workQuery.isError) {
     return (
       <LoadError
         message="Something went wrong while loading your onboarding progress."
         onRetry={() => {
           void kycQuery.refetch();
           void payoutQuery.refetch();
+          void workQuery.refetch();
         }}
       />
     );
   }
 
-  if (kycQuery.isPending || payoutQuery.isPending || step === null) {
+  if (kycQuery.isPending || payoutQuery.isPending || workQuery.isPending || step === null) {
     return <LoadingState />;
   }
 
-  async function handleUpload(documentType: KycDocumentType, file: File) {
-    await uploadKycDocument(file, documentType);
-    await invalidateProfiles();
-  }
-
-  async function handleRemove(id: string) {
-    try {
-      await removeKycDocument(id);
-      setActionError(null);
-      await invalidateProfiles();
-    } catch {
-      setActionError("Something went wrong while removing the document.");
-      throw new Error("remove failed");
-    }
-  }
+  const firstName = name.trim().split(/\s+/)[0] || name;
 
   switch (step) {
-    case "rejected":
+    case "welcome":
       return (
-        <RejectedStep
-          reason={kyc?.rejectionReason ?? null}
-          onUpdate={() => {
-            setActionError(null);
-            setManualStep("personal");
-          }}
-        />
+        <StepTransition stepKey={step}>
+          <WelcomeStep
+            firstName={firstName}
+            onContinue={() => setManualStep("profile")}
+            steps={TEAM_ONBOARDING_PROGRESS_STEPS}
+            currentIndex={currentIndex}
+          />
+        </StepTransition>
       );
 
-    case "personal":
+    case "profile":
       return (
-        <PersonalStep
-          profile={kyc}
-          pending={savePersonal.isPending}
-          error={actionError}
-          onBack={() => {
-            setManualStep(null);
-            setPhase("mirror");
-          }}
-          onSave={(values) => savePersonal.mutate(values)}
-        />
+        <StepTransition stepKey={step}>
+          <ProfileStep
+            name={name}
+            email={email}
+            mobile={kyc?.mobile ?? null}
+            pending={saveProfile.isPending}
+            error={actionError}
+            onBack={() => {
+              setManualStep(null);
+              setPhase("mirror");
+            }}
+            onSave={(values) => saveProfile.mutate(values)}
+            steps={TEAM_ONBOARDING_PROGRESS_STEPS}
+            currentIndex={currentIndex}
+          />
+        </StepTransition>
       );
 
-    case "identity":
+    case "work":
       return (
-        <IdentityStep
-          profile={kyc}
-          pending={saveIdentity.isPending}
-          error={actionError}
-          onBack={() => setManualStep("personal")}
-          onSave={(values) => saveIdentity.mutate(values)}
-        />
-      );
-
-    case "documents":
-      return (
-        <DocumentsStep
-          profile={kyc}
-          editable={editable}
-          pending={false}
-          error={actionError}
-          onBack={() => setManualStep("identity")}
-          onContinue={() => {
-            setActionError(null);
-            setManualStep("payout");
-          }}
-          onUpload={handleUpload}
-          onRemove={handleRemove}
-        />
+        <StepTransition stepKey={step}>
+          <WorkStep
+            profile={work}
+            pending={saveWork.isPending}
+            error={actionError}
+            onBack={() => setManualStep("profile")}
+            onSave={(values) => saveWork.mutate(values)}
+            steps={TEAM_ONBOARDING_PROGRESS_STEPS}
+            currentIndex={currentIndex}
+          />
+        </StepTransition>
       );
 
     case "payout":
       return (
-        <PayoutStep
-          profile={payout}
-          pending={savePayout.isPending}
-          error={actionError}
-          qrUploading={qrUploading}
-          qrError={qrError}
-          onBack={() => setManualStep("documents")}
-          onSave={(values) => savePayout.mutate(values)}
-          onUploadQr={handleUploadQr}
-          onRemoveQr={handleRemoveQr}
-        />
+        <StepTransition stepKey={step}>
+          <PayoutStep
+            profile={payout}
+            pending={savePayout.isPending}
+            error={actionError}
+            qrUploading={qrUploading}
+            qrError={qrError}
+            onBack={() => setManualStep("work")}
+            onSave={(values) => savePayout.mutate(values)}
+            onUploadQr={handleUploadQr}
+            onRemoveQr={handleRemoveQr}
+            steps={TEAM_ONBOARDING_PROGRESS_STEPS}
+            currentIndex={currentIndex}
+          />
+        </StepTransition>
       );
 
     case "review":
       return (
-        <ReviewStep
-          kyc={kyc}
-          payout={payout}
-          editable={editable}
-          pending={submitKyc.isPending}
-          error={actionError}
-          onBack={() => setManualStep("payout")}
-          onEditPersonal={() => setManualStep("personal")}
-          onEditIdentity={() => setManualStep("identity")}
-          onEditDocuments={() => setManualStep("documents")}
-          onEditPayout={() => setManualStep("payout")}
-          onSubmit={() => submitKyc.mutate()}
-        />
-      );
-
-    case "submitted":
-      return (
-        <SubmittedStep
-          submitting={submitKyc.isPending}
-          onContinue={() => {
-            setManualStep(null);
-          }}
-        />
+        <StepTransition stepKey={step}>
+          <OnboardingReviewStep
+            name={name}
+            email={email}
+            mobile={kyc?.mobile ?? null}
+            work={work}
+            payout={payout}
+            pending={false}
+            error={actionError}
+            onBack={() => setManualStep("payout")}
+            onEditProfile={() => setManualStep("profile")}
+            onEditWork={() => setManualStep("work")}
+            onEditPayout={() => setManualStep("payout")}
+            onComplete={() => {
+              setActionError(null);
+              setManualStep("orientation");
+            }}
+            steps={TEAM_ONBOARDING_PROGRESS_STEPS}
+            currentIndex={currentIndex}
+          />
+        </StepTransition>
       );
 
     case "orientation":

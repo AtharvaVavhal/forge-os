@@ -6,5 +6,5 @@ export const dynamic = "force-dynamic";
 export default async function OnboardingPage() {
   const session = await requireOnboardingSession();
 
-  return <OnboardingFlow name={session.user.name} role={session.user.role} />;
+  return <OnboardingFlow name={session.user.name} email={session.user.email} role={session.user.role} />;
 }

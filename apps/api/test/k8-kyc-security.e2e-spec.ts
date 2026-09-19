@@ -247,7 +247,7 @@ describe("K8 KYC/Payout security hardening (e2e)", () => {
     }
   });
 
-  it("blocks onboarding complete without KYC / docs / payout", async () => {
+  it("blocks onboarding complete without payout profile (KYC is no longer required for onboarding — see team-onboarding.e2e-spec.ts)", async () => {
     const { session } = await createMember(app, finance.organizationId, {
       withKyc: false,
       withPayout: false,
@@ -261,6 +261,8 @@ describe("K8 KYC/Payout security hardening (e2e)", () => {
     expect(none.status).toBe(422);
     expect(JSON.stringify(none.body)).toMatch(/ONBOARDING_REQUIREMENTS_INCOMPLETE|incomplete/i);
 
+    // DRAFT KYC + complete payout: onboarding now succeeds — KYC status
+    // never gates it (Phase 2 of the K5 onboarding redesign).
     const draftOnly = await createMember(app, finance.organizationId, {
       withKyc: true,
       status: KycStatus.DRAFT,
@@ -271,7 +273,7 @@ describe("K8 KYC/Payout security hardening (e2e)", () => {
       .post("/api/v1/auth/onboarding/complete")
       .set(authHeaders(draftOnly.session))
       .send({});
-    expect(draftComplete.status).toBe(422);
+    expect(draftComplete.status).toBe(200);
   });
 
   it("blocks member mutation of UNDER_REVIEW KYC", async () => {

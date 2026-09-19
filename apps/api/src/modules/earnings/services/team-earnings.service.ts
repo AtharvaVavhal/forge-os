@@ -7,6 +7,7 @@ import { AuditService } from "../../shared/audit.service";
 import type { AuthenticatedUser } from "../../auth/types/authenticated-request.interface";
 import { EARNINGS_AUDIT_ACTIONS } from "./earnings-audit-actions";
 import { EarningsBalanceService } from "./earnings-balance.service";
+import { TeamOnboardingGateService } from "../../team/services/team-onboarding-gate.service";
 import type { CreateTeamPayoutRequestDto } from "../dto/team-payout.dto";
 import {
   toTeamEarningEntryView,
@@ -40,7 +41,8 @@ export class TeamEarningsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly balance: EarningsBalanceService
+    private readonly balance: EarningsBalanceService,
+    private readonly onboardingGate: TeamOnboardingGateService
   ) {}
 
   async getSummary(actor: AuthenticatedUser): Promise<TeamEarningsSummaryView> {
@@ -138,6 +140,12 @@ export class TeamEarningsService {
         message: "Withdrawal amount must be greater than zero.",
       });
     }
+
+    // Phase 3 of the K5 onboarding redesign: KYC is never required to
+    // *enter* Forge, only to withdraw. Checked before the balance lock —
+    // KYC status has no concurrency concern, so failing fast here avoids
+    // taking the row lock at all for a member who isn't verified yet.
+    await this.onboardingGate.assertKycVerifiedForWithdrawal(actor.organizationId, actor.id);
 
     const created = await this.prisma.$transaction(async (tx) => {
       const lockedUsers = await tx.$queryRaw<Array<{ id: string }>>`

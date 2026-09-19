@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { OnboardingStepShell } from "../onboarding-step-shell";
-import { hasActiveDoc } from "../../lib/resume";
+import { hasActiveDoc } from "../../lib/financial-verification";
 import type { KycDocumentType, KycProfile } from "../../api/types";
 import { KYC_ALLOWED_MIME_TYPES } from "../../api/types";
 

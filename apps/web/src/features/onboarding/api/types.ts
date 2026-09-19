@@ -139,6 +139,26 @@ export function emptyUpiQr(): UpiQrSummary {
   };
 }
 
+/** K5 onboarding redesign — lightweight, never gated on. */
+export interface WorkProfile {
+  jobTitle: string | null;
+  primaryArea: string | null;
+  skills: string[];
+  bio: string | null;
+  updatedAt: string | null;
+}
+
+export type UpsertWorkProfileBody = {
+  jobTitle?: string;
+  primaryArea?: string;
+  skills?: string[];
+  bio?: string;
+};
+
+export function emptyWorkProfile(): WorkProfile {
+  return { jobTitle: null, primaryArea: null, skills: [], bio: null, updatedAt: null };
+}
+
 export function emptyPayoutProfile(): PayoutProfile {
   return {
     configured: false,

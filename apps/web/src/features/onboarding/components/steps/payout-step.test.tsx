@@ -3,6 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithQuery } from "@/test/test-utils";
 import { PayoutStep } from "./payout-step";
+import { TEAM_ONBOARDING_PROGRESS_STEPS } from "../../lib/resume";
 import type { PayoutProfile } from "../../api/types";
 
 vi.mock("@/features/shared/api/bank-directory-api", () => ({
@@ -20,6 +21,8 @@ const noopQr = {
   qrError: null as string | null,
   onUploadQr: async () => undefined,
   onRemoveQr: async () => undefined,
+  steps: TEAM_ONBOARDING_PROGRESS_STEPS,
+  currentIndex: 3,
 };
 
 function emptyProfile(overrides: Partial<PayoutProfile> = {}): PayoutProfile {

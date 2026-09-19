@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { JwtModule } from "@nestjs/jwt";
 import { AuthController } from "./controllers/auth.controller";
 import { InvitationsController } from "./controllers/invitations.controller";
+import { WorkProfileController } from "./controllers/work-profile.controller";
 import { AuthService } from "./services/auth.service";
 import { CsrfService } from "./services/csrf.service";
 import { GoogleSsoService } from "./services/google-sso.service";
@@ -9,6 +10,7 @@ import { InvitationService } from "./services/invitation.service";
 import { PasswordResetService } from "./services/password-reset.service";
 import { PasswordService } from "./services/password.service";
 import { SessionService } from "./services/session.service";
+import { WorkProfileService } from "./services/work-profile.service";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { PermissionsGuard } from "./guards/permissions.guard";
 import { CsrfGuard } from "./guards/csrf.guard";
@@ -24,7 +26,7 @@ import { TeamModule } from "../team/team.module";
  */
 @Module({
   imports: [JwtModule.register({}), TeamModule],
-  controllers: [AuthController, InvitationsController],
+  controllers: [AuthController, InvitationsController, WorkProfileController],
   providers: [
     AuthService,
     SessionService,
@@ -33,6 +35,7 @@ import { TeamModule } from "../team/team.module";
     InvitationService,
     PasswordResetService,
     GoogleSsoService,
+    WorkProfileService,
     JwtAuthGuard,
     PermissionsGuard,
     CsrfGuard,

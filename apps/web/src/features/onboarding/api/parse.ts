@@ -20,6 +20,7 @@ import {
   type KycStatus,
   type PayoutMethod,
   type PayoutProfile,
+  type WorkProfile,
 } from "./types";
 
 function inSet<T extends string>(value: unknown, allowed: readonly T[]): T | null {
@@ -100,6 +101,26 @@ export function parseKycProfile(payload: unknown): KycProfile | null {
       asString(readField(node, "rejectionReason", "rejection_reason")) ?? null,
     documents,
     createdAt: asIsoDate(readField(node, "createdAt", "created_at")),
+    updatedAt: asIsoDate(readField(node, "updatedAt", "updated_at")),
+  };
+}
+
+export function parseWorkProfile(payload: unknown): WorkProfile | null {
+  const node = isRecord(unwrapData(payload))
+    ? (unwrapData(payload) as Record<string, unknown>)
+    : isRecord(payload)
+      ? payload
+      : null;
+  if (!node) return null;
+
+  const skillsRaw = Array.isArray(node.skills) ? node.skills : [];
+  const skills = skillsRaw.filter((skill): skill is string => typeof skill === "string");
+
+  return {
+    jobTitle: asString(readField(node, "jobTitle", "job_title")) ?? null,
+    primaryArea: asString(readField(node, "primaryArea", "primary_area")) ?? null,
+    skills,
+    bio: asString(node.bio) ?? null,
     updatedAt: asIsoDate(readField(node, "updatedAt", "updated_at")),
   };
 }

@@ -106,7 +106,7 @@ describe("OrientationScreen", () => {
     const user = userEvent.setup();
     renderWithQuery(<OrientationScreen role="TEAM_MEMBER" onEnter={onEnter} />);
 
-    expect(screen.getByRole("heading", { name: /your workspace/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /you.re all set/i })).toBeInTheDocument();
     expect(screen.queryByText(/complete your profile/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /enter forge/i }));
     expect(onEnter).toHaveBeenCalled();

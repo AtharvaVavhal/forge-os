@@ -1,8 +1,8 @@
 "use client";
 
 import { OnboardingStepShell } from "../onboarding-step-shell";
-import { GOVERNMENT_ID_LABELS, type KycProfile, type PayoutProfile } from "../../api/types";
-import { maskAccountNumber, maskIdNumber, maskIfsc, maskPan, maskUpi } from "../../lib/mask";
+import { GOVERNMENT_ID_LABELS, type KycProfile } from "../../api/types";
+import { maskIdNumber, maskPan } from "../../lib/mask";
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
@@ -49,9 +49,9 @@ function Section({
   );
 }
 
+/** Financial Verification flow only (post-onboarding KYC review) — no payout content; payout is set up during onboarding, not here. */
 export function ReviewStep({
   kyc,
-  payout,
   editable,
   pending,
   error,
@@ -59,11 +59,9 @@ export function ReviewStep({
   onEditPersonal,
   onEditIdentity,
   onEditDocuments,
-  onEditPayout,
   onSubmit,
 }: {
   kyc: KycProfile | null;
-  payout: PayoutProfile | null;
   editable: boolean;
   pending: boolean;
   error: string | null;
@@ -71,7 +69,6 @@ export function ReviewStep({
   onEditPersonal: () => void;
   onEditIdentity: () => void;
   onEditDocuments: () => void;
-  onEditPayout: () => void;
   onSubmit: () => void;
 }) {
   function editIdentity() {
@@ -113,24 +110,6 @@ export function ReviewStep({
       <Section title="Documents" editable={editable} onEdit={onEditDocuments}>
         <SummaryRow label="PAN Card" value={panDoc ? "✓ Uploaded" : "Missing"} />
         <SummaryRow label="Government ID" value={govDoc ? "✓ Uploaded" : "Missing"} />
-      </Section>
-
-      <Section title="Bank Transfer" editable={editable} onEdit={onEditPayout}>
-        <SummaryRow label="Account holder" value={payout?.accountHolderName ?? "—"} />
-        <SummaryRow label="Bank" value={payout?.bankName ?? "—"} />
-        <SummaryRow
-          label="Account"
-          value={maskAccountNumber(payout?.accountNumber)}
-        />
-        <SummaryRow label="IFSC" value={maskIfsc(payout?.ifsc)} />
-      </Section>
-
-      <Section title="UPI" editable={editable} onEdit={onEditPayout}>
-        <SummaryRow label="UPI ID" value={maskUpi(payout?.upiId)} />
-        <SummaryRow
-          label="QR Code"
-          value={payout?.upiQr?.uploaded ? "✓ Uploaded" : "Missing"}
-        />
       </Section>
     </OnboardingStepShell>
   );

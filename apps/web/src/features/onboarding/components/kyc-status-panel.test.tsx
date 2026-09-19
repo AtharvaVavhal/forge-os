@@ -111,6 +111,34 @@ describe("KycStatusPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows a Start verification CTA linking to /verification when nothing has been submitted", async () => {
+    mockGetOwnKycProfile.mockResolvedValue(null);
+    renderWithShell(<KycStatusPanel />);
+    const cta = await screen.findByRole("link", { name: /start verification/i });
+    expect(cta).toHaveAttribute("href", "/verification");
+  });
+
+  it("shows a Resubmit verification CTA when rejected", async () => {
+    mockGetOwnKycProfile.mockResolvedValue(kycProfile({ status: "REJECTED", rejectionReason: "Blurry photo." }));
+    renderWithShell(<KycStatusPanel />);
+    const cta = await screen.findByRole("link", { name: /resubmit verification/i });
+    expect(cta).toHaveAttribute("href", "/verification");
+  });
+
+  it("shows no CTA once submitted — nothing left to act on until Finance reviews it", async () => {
+    mockGetOwnKycProfile.mockResolvedValue(kycProfile({ status: "UNDER_REVIEW" }));
+    renderWithShell(<KycStatusPanel />);
+    await screen.findByText("Under review");
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("shows no CTA once verified", async () => {
+    mockGetOwnKycProfile.mockResolvedValue(kycProfile({ status: "VERIFIED", verifiedAt: "2026-03-10T00:00:00.000Z" }));
+    renderWithShell(<KycStatusPanel />);
+    await screen.findByText("Verified");
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
   it("never renders PAN, government ID, documents, or payout data", async () => {
     mockGetOwnKycProfile.mockResolvedValue(
       kycProfile({

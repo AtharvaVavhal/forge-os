@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/forms/field";
@@ -10,6 +11,7 @@ import { Drawer } from "@/components/overlays/drawer";
 import { ConfirmationDialog } from "@/components/overlays/modal";
 import { StatusBadge, type StatusTone } from "@/components/feedback/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeaderCell, TableRow } from "@/components/data-display/table";
+import { EmptyState } from "@/components/data-display/empty-state";
 import { useToast } from "@/components/overlays/toast";
 import { queryErrorMessage } from "@/lib/api/query-error";
 import { isUnauthorizedError } from "@/features/auth/api/classify-auth-error";
@@ -17,6 +19,8 @@ import { ErrorState, LoadingState } from "@/components/data-display/data-states"
 import { formatDate } from "@/features/crm/format";
 import { formatInr } from "@/lib/money/format-inr";
 import { MoneyText } from "@/features/finance/components/money-text";
+import { getOwnKycProfile } from "@/features/onboarding/api/kyc-api";
+import { onboardingQueryKeys } from "@/features/onboarding/api/query-keys";
 import {
   createOwnPayoutRequest,
   getOwnEarningsSummary,
@@ -55,8 +59,14 @@ function StatTile({ label, value, helper }: { label: string; value: string; help
  * server-computed decimal string rendered as-is through `MoneyText` — no
  * addition/subtraction/comparison happens in this component. `recoveryOwed`
  * is never requested or shown; it's Finance-only.
+ *
+ * K5 onboarding redesign — withdrawing requires KYC status VERIFIED (checked
+ * again server-side by `POST /team/payouts`, which is the actual gate; this
+ * is just the matching UI so a member isn't led into a request that will be
+ * rejected with `KYC_REQUIRED_FOR_WITHDRAWAL`).
  */
 export function TeamEarningsTab() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const { pushToast } = useToast();
   const [withdrawOpen, setWithdrawOpen] = useState(false);
@@ -68,6 +78,11 @@ export function TeamEarningsTab() {
     queryKey: earningsKeys.team.summary,
     queryFn: getOwnEarningsSummary,
   });
+  const kyc = useQuery({
+    queryKey: onboardingQueryKeys.kyc(),
+    queryFn: getOwnKycProfile,
+  });
+  const verified = kyc.data?.status === "VERIFIED";
   const recentEarnings = useQuery({
     queryKey: earningsKeys.team.allocations({ page: 1, pageSize: 10 }),
     queryFn: () => listOwnEarningAllocations({ page: 1, pageSize: 10 }),
@@ -116,7 +131,7 @@ export function TeamEarningsTab() {
           kicker="Settings"
           title="Earnings"
           description="What you've earned from approved project allocations, and what's available to withdraw."
-          action={<Button onClick={() => setWithdrawOpen(true)}>Withdraw funds</Button>}
+          action={verified ? <Button onClick={() => setWithdrawOpen(true)}>Withdraw funds</Button> : undefined}
         />
         <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <StatTile label="Available to withdraw" value={data.available} />
@@ -124,6 +139,17 @@ export function TeamEarningsTab() {
           <StatTile label="Lifetime earned" value={data.lifetimeEarned} />
           <StatTile label="Lifetime paid" value={data.lifetimePaid} />
         </dl>
+        {kyc.isSuccess && !verified ? (
+          <EmptyState
+            kicker="Withdrawals"
+            title="Financial verification required"
+            description="Complete a quick identity check (PAN and government ID) before you can withdraw your earnings."
+            action={
+              <Button onClick={() => router.push("/verification")}>Complete verification</Button>
+            }
+            className="mt-6 py-10"
+          />
+        ) : null}
       </Card>
 
       <Card>

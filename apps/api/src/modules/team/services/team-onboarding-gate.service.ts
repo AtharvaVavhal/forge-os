@@ -1,33 +1,29 @@
 import {
+  ConflictException,
   Injectable,
   UnprocessableEntityException,
 } from "@nestjs/common";
-import {
-  KycDocumentStatus,
-  KycDocumentType,
-  KycStatus,
-  type Prisma,
-} from "@prisma/client";
+import { KycDocumentStatus, KycDocumentType, KycStatus, type Prisma } from "@prisma/client";
 import { PrismaService } from "../../../database/prisma.service";
-
-/** KYC statuses that allow TEAM_MEMBER onboarding completion (not VERIFIED-only). */
-export const ONBOARDING_ALLOWED_KYC_STATUSES: ReadonlySet<KycStatus> = new Set([
-  KycStatus.SUBMITTED,
-  KycStatus.UNDER_REVIEW,
-  KycStatus.VERIFIED,
-]);
 
 type DbClient = PrismaService | Prisma.TransactionClient;
 
 export interface OnboardingRequirementFailure {
-  code: "KYC_INCOMPLETE" | "PAYOUT_PROFILE_INCOMPLETE";
+  code: "PAYOUT_PROFILE_INCOMPLETE";
   missing: string[];
 }
 
 /**
  * Server-side TEAM_MEMBER onboarding gate.
- * FINAL: requires KYC (status + docs) AND complete dual payout
- * (bank fields + upiId + registered UPI QR storage object).
+ *
+ * Product decision (post-K12): financial KYC (PAN, government ID, document
+ * upload, Finance review) is deliberately NOT part of first-run onboarding
+ * — it happens later, gated at first withdrawal instead (see
+ * `TeamEarningsService.createPayoutRequest`, which calls
+ * `assertKycVerifiedForWithdrawal` below). Onboarding completion never
+ * inspects `KycProfile` at all, in any status. Only a complete dual payout
+ * profile (bank fields + upiId + registered UPI QR) is still required —
+ * unchanged from before.
  */
 @Injectable()
 export class TeamOnboardingGateService {
@@ -35,7 +31,7 @@ export class TeamOnboardingGateService {
 
   /**
    * Throws `ONBOARDING_REQUIREMENTS_INCOMPLETE` with safe `details.requirements`
-   * when KYC and/or payout are not ready. No-op when both pass.
+   * when the payout profile is not ready. No-op when it passes.
    */
   async assertTeamMemberReady(
     organizationId: string,
@@ -43,11 +39,6 @@ export class TeamOnboardingGateService {
     db: DbClient = this.prisma
   ): Promise<void> {
     const requirements: OnboardingRequirementFailure[] = [];
-
-    const kycMissing = await this.collectKycMissing(db, organizationId, userId);
-    if (kycMissing.length > 0) {
-      requirements.push({ code: "KYC_INCOMPLETE", missing: kycMissing });
-    }
 
     const payoutMissing = await this.collectPayoutMissing(
       db,
@@ -65,51 +56,53 @@ export class TeamOnboardingGateService {
       throw new UnprocessableEntityException({
         code: "ONBOARDING_REQUIREMENTS_INCOMPLETE",
         message:
-          "Team member onboarding requires a submitted KYC profile with required documents and a complete payout profile (bank transfer, UPI ID, and UPI QR).",
+          "Team member onboarding requires a complete payout profile (bank transfer, UPI ID, and UPI QR).",
         details: { requirements },
       });
     }
   }
 
-  private async collectKycMissing(
-    db: DbClient,
+  /**
+   * `POST /team/payouts` precondition (Phase 3 of the K5 onboarding
+   * redesign): the requesting member's KYC must be `VERIFIED` with both
+   * required documents still active (`UPLOADED`, not `REMOVED`). This is
+   * the ONLY place KYC becomes mandatory for a TEAM_MEMBER — deliberately
+   * long after onboarding, at first withdrawal. Thrown as a distinct
+   * `KYC_REQUIRED_FOR_WITHDRAWAL` code (never conflated with onboarding's
+   * `ONBOARDING_REQUIREMENTS_INCOMPLETE`) so the frontend can route the
+   * member into financial verification specifically.
+   */
+  async assertKycVerifiedForWithdrawal(
     organizationId: string,
-    userId: string
-  ): Promise<string[]> {
-    const missing: string[] = [];
+    userId: string,
+    db: DbClient = this.prisma
+  ): Promise<void> {
     const profile = await db.kycProfile.findFirst({
       where: { organization_id: organizationId, user_id: userId },
       include: { documents: true },
     });
 
-    if (!profile) {
-      return ["kyc_profile", "PAN_CARD", "GOVERNMENT_ID"];
+    const missing: string[] = [];
+    if (!profile || profile.status !== KycStatus.VERIFIED) {
+      missing.push("kyc_status");
     }
-
-    if (!ONBOARDING_ALLOWED_KYC_STATUSES.has(profile.status)) {
-      if (
-        profile.status === KycStatus.DRAFT ||
-        profile.status === KycStatus.NOT_STARTED
-      ) {
-        missing.push("personal_information");
-      } else {
-        missing.push("kyc_status");
-      }
-    }
-
-    const activeDocs = profile.documents.filter(
+    const activeDocs = (profile?.documents ?? []).filter(
       (d) => d.status === KycDocumentStatus.UPLOADED
     );
     if (!activeDocs.some((d) => d.document_type === KycDocumentType.PAN_CARD)) {
       missing.push("PAN_CARD");
     }
-    if (
-      !activeDocs.some((d) => d.document_type === KycDocumentType.GOVERNMENT_ID)
-    ) {
+    if (!activeDocs.some((d) => d.document_type === KycDocumentType.GOVERNMENT_ID)) {
       missing.push("GOVERNMENT_ID");
     }
 
-    return missing;
+    if (missing.length > 0) {
+      throw new ConflictException({
+        code: "KYC_REQUIRED_FOR_WITHDRAWAL",
+        message: "Complete financial verification before requesting a withdrawal.",
+        details: { missing },
+      });
+    }
   }
 
   private async collectPayoutMissing(

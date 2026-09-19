@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { PrismaModule } from "../../database/prisma.module";
+import { TeamModule } from "../team/team.module";
 import { ProjectAllocationsController } from "./controllers/project-allocations.controller";
 import { PayoutsController } from "./controllers/payouts.controller";
 import { TeamEarningsController } from "./controllers/team-earnings.controller";
@@ -17,10 +18,13 @@ import { TeamEarningsService } from "./services/team-earnings.service";
  * ProjectAllocationLine, TeamPayoutRequest) and serves both planes —
  * Finance review (`/project-allocations*`, `/payouts*`) and member
  * self-service (`/team/earnings*`, `/team/payouts*`) — so it doesn't
- * belong exclusively to either existing module.
+ * belong exclusively to either existing module. Imports `TeamModule` for
+ * `TeamOnboardingGateService` — `TeamEarningsService.createPayoutRequest`
+ * calls its `assertKycVerifiedForWithdrawal` (Phase 3 of the K5 onboarding
+ * redesign: KYC is required at first withdrawal, not at onboarding).
  */
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, TeamModule],
   controllers: [ProjectAllocationsController, PayoutsController, TeamEarningsController, TeamPayoutsController],
   providers: [
     ProjectFinancialsService,

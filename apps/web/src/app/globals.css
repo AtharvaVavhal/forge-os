@@ -475,12 +475,28 @@ h6 {
   }
 }
 
+/* Onboarding step-transition exit (StepTransition) — the outgoing step
+   fades and lifts slightly before the incoming step's forge-onboard-rise
+   plays. Kept short relative to the enter animation per the "fast, calm"
+   motion brief. */
+@keyframes forge-onboard-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .motion-safe\:animate-\[forge-onboard-rise_220ms_ease-out_both\],
   .motion-safe\:animate-\[forge-onboard-fade_150ms_ease-out_both\],
   .motion-safe\:animate-\[forge-onboard-fade_400ms_ease-out_both\],
   .motion-safe\:animate-\[forge-onboard-fade_600ms_ease-out_both\],
-  .motion-safe\:animate-\[forge-onboard-check_600ms_ease-out_both\] {
+  .motion-safe\:animate-\[forge-onboard-check_600ms_ease-out_both\],
+  .motion-safe\:animate-\[forge-onboard-exit_160ms_ease-in_both\] {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;

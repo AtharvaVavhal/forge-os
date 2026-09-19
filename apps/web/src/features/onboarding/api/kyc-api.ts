@@ -3,7 +3,7 @@ import { apiClient } from "@/lib/api/client";
 import { browserMutate } from "@/lib/api/browser-mutate";
 import { parsePresign } from "@/features/shared/api/parse";
 import { onboardingKycPaths } from "./paths";
-import { parseKycDocument, parseKycProfile, parsePayoutProfile } from "./parse";
+import { parseKycDocument, parseKycProfile, parsePayoutProfile, parseWorkProfile } from "./parse";
 import type {
   KycDocument,
   KycDocumentType,
@@ -11,6 +11,8 @@ import type {
   KycWritableFields,
   PayoutProfile,
   UpsertPayoutBody,
+  UpsertWorkProfileBody,
+  WorkProfile,
 } from "./types";
 import {
   MAX_KYC_DOCUMENT_BYTES,
@@ -62,6 +64,17 @@ export async function submitKycProfile(): Promise<KycProfile> {
     body: {},
   });
   return requireParsed(parseKycProfile(payload), "KYC profile");
+}
+
+export async function getOwnWorkProfile(): Promise<WorkProfile> {
+  const payload = await apiClient.get<unknown>(onboardingKycPaths.workProfile);
+  return requireParsed(parseWorkProfile(payload), "work profile");
+}
+
+/** Writes to `User` directly — the API re-issues `forge_session`/CSRF in the response, which `browserMutate`'s caller doesn't need to handle: the browser applies the new Set-Cookie automatically. */
+export async function upsertWorkProfile(body: UpsertWorkProfileBody): Promise<WorkProfile> {
+  const payload = await browserMutate<unknown>("PUT", onboardingKycPaths.workProfile, { body });
+  return requireParsed(parseWorkProfile(payload), "work profile");
 }
 
 export async function getOwnPayoutProfile(): Promise<PayoutProfile> {

@@ -14,13 +14,15 @@ type Step = "mirror" | "orientation" | "departing";
 
 export function OnboardingFlow({
   name,
+  email,
   role,
 }: {
   name: string;
+  email: string;
   role: UserRole;
 }) {
   if (role === "TEAM_MEMBER") {
-    return <TeamOnboardingFlow name={name} />;
+    return <TeamOnboardingFlow name={name} email={email} />;
   }
 
   return <StandardOnboardingFlow name={name} role={role} />;

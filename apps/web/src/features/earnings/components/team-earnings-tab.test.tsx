@@ -13,17 +13,50 @@ vi.mock("../api/earnings-api", () => ({
   createOwnPayoutRequest: vi.fn(),
 }));
 
+vi.mock("@/features/onboarding/api/kyc-api", () => ({
+  getOwnKycProfile: vi.fn(),
+}));
+
 import {
   createOwnPayoutRequest,
   getOwnEarningsSummary,
   listOwnEarningAllocations,
   listOwnPayouts,
 } from "../api/earnings-api";
+import { getOwnKycProfile } from "@/features/onboarding/api/kyc-api";
+import type { KycProfile } from "@/features/onboarding/api/types";
 
 const mockGetSummary = vi.mocked(getOwnEarningsSummary);
 const mockListAllocations = vi.mocked(listOwnEarningAllocations);
 const mockListPayouts = vi.mocked(listOwnPayouts);
 const mockCreatePayout = vi.mocked(createOwnPayoutRequest);
+const mockGetKyc = vi.mocked(getOwnKycProfile);
+
+function kycProfile(overrides: Partial<KycProfile> = {}): KycProfile {
+  return {
+    id: "kyc-1",
+    status: "VERIFIED",
+    legalName: "Atharva",
+    dateOfBirth: "1995-01-01",
+    mobile: "+919876543210",
+    addressLine1: "1 MG Road",
+    addressLine2: null,
+    city: "Bengaluru",
+    state: "Karnataka",
+    postalCode: "560001",
+    pan: "ABCDE1234F",
+    governmentIdType: "AADHAAR",
+    governmentIdNumber: "123412341234",
+    submittedAt: "2026-01-01T00:00:00.000Z",
+    verifiedAt: "2026-01-05T00:00:00.000Z",
+    rejectedAt: null,
+    rejectionReason: null,
+    documents: [],
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-05T00:00:00.000Z",
+    ...overrides,
+  };
+}
 
 const zeroSummary: TeamEarningsSummary = {
   available: "0.00",
@@ -76,6 +109,7 @@ const payout: TeamPayoutRequest = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockGetKyc.mockResolvedValue(kycProfile());
 });
 
 describe("TeamEarningsTab — loading", () => {
@@ -183,6 +217,31 @@ describe("TeamEarningsTab — withdrawal form", () => {
 
     expect(await screen.findByText("Couldn’t request withdrawal")).toBeInTheDocument();
     expect(screen.getByText("This withdrawal amount exceeds your available balance.")).toBeInTheDocument();
+  });
+});
+
+describe("TeamEarningsTab — financial verification gate (K5 onboarding redesign)", () => {
+  it("shows a verification gate instead of the withdraw button when KYC isn't VERIFIED", async () => {
+    mockGetKyc.mockResolvedValue(kycProfile({ status: "UNDER_REVIEW" }));
+    mockGetSummary.mockResolvedValue(earnedSummary);
+    mockListAllocations.mockResolvedValue({ items: [], page: 1, pageSize: 10, total: 0 });
+    mockListPayouts.mockResolvedValue({ items: [], page: 1, pageSize: 10, total: 0 });
+    renderWithShell(<TeamEarningsTab />);
+
+    expect(await screen.findByText("Financial verification required")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Withdraw funds" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /complete verification/i })).toBeInTheDocument();
+  });
+
+  it("shows the withdraw button (no gate) once KYC is VERIFIED", async () => {
+    mockGetKyc.mockResolvedValue(kycProfile({ status: "VERIFIED" }));
+    mockGetSummary.mockResolvedValue(earnedSummary);
+    mockListAllocations.mockResolvedValue({ items: [], page: 1, pageSize: 10, total: 0 });
+    mockListPayouts.mockResolvedValue({ items: [], page: 1, pageSize: 10, total: 0 });
+    renderWithShell(<TeamEarningsTab />);
+
+    expect(await screen.findByRole("button", { name: "Withdraw funds" })).toBeInTheDocument();
+    expect(screen.queryByText("Financial verification required")).not.toBeInTheDocument();
   });
 });
 

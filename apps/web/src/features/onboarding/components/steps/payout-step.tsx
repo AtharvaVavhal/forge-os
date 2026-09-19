@@ -10,6 +10,7 @@ import { cn } from "@/lib/cn";
 import { lookupIfsc } from "@/features/shared/api/bank-directory-api";
 import { sharedKeys } from "@/features/shared/api/query-keys";
 import { OnboardingStepShell } from "../onboarding-step-shell";
+import type { OnboardingProgressStep } from "../motion/onboarding-progress";
 import { payoutFormSchema, type PayoutFormValues } from "../../schemas/forms";
 import {
   UPI_QR_ALLOWED_MIME_TYPES,
@@ -124,6 +125,8 @@ export function PayoutStep({
   onSave,
   onUploadQr,
   onRemoveQr,
+  steps,
+  currentIndex,
 }: {
   profile: PayoutProfile | null;
   pending: boolean;
@@ -134,6 +137,8 @@ export function PayoutStep({
   onSave: (values: PayoutFormValues) => void;
   onUploadQr: (file: File) => Promise<void>;
   onRemoveQr: () => Promise<void>;
+  steps: ReadonlyArray<OnboardingProgressStep>;
+  currentIndex: number;
 }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [qrRequiredError, setQrRequiredError] = useState<string | null>(null);
@@ -177,13 +182,14 @@ export function PayoutStep({
       }}
     >
       <OnboardingStepShell
-        title="Set up your payouts."
-        subtitle="Forge uses these details when sending your payouts."
+        title="Set up your payout details."
+        subtitle="This tells Forge where to send your earnings in the future."
         error={error}
         onBack={onBack}
         nextLabel="Continue"
         nextType="submit"
         nextPending={pending}
+        progress={{ steps, currentIndex }}
         nextDisabled={qrUploading || removing}
       >
         <section className="flex flex-col gap-4 border-b border-steel/15 pb-6">

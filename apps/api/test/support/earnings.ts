@@ -191,6 +191,61 @@ export async function upsertCompletePayoutProfile(
   });
 }
 
+/**
+ * Seeds a `VERIFIED` KycProfile with both required documents (PAN + government
+ * ID, `UPLOADED`) for `userId` — the withdrawal gate's full pass condition
+ * (`TeamOnboardingGateService.assertKycVerifiedForWithdrawal`). Upserts so it's
+ * safe to call more than once for the same member.
+ */
+export async function seedVerifiedKyc(app: INestApplication, organizationId: string, userId: string) {
+  const prisma = app.get(PrismaService);
+  const profile = await prisma.kycProfile.upsert({
+    where: { user_id: userId },
+    create: {
+      organization_id: organizationId,
+      user_id: userId,
+      status: "VERIFIED",
+      legal_name: "Test Member",
+      date_of_birth: new Date("1990-01-01T00:00:00.000Z"),
+      mobile: "+919876543210",
+      address_line1: "1 Test Lane",
+      city: "Bengaluru",
+      state: "Karnataka",
+      postal_code: "560001",
+      pan: "ABCDE1234F",
+      government_id_type: "AADHAAR",
+      government_id_number: "111122223333",
+      submitted_at: new Date(),
+      verified_at: new Date(),
+    },
+    update: { status: "VERIFIED", verified_at: new Date(), rejected_at: null, rejection_reason: null },
+  });
+
+  for (const documentType of ["PAN_CARD", "GOVERNMENT_ID"] as const) {
+    const existing = await prisma.kycDocument.findFirst({
+      where: { kyc_profile_id: profile.id, document_type: documentType },
+    });
+    if (existing) {
+      await prisma.kycDocument.update({ where: { id: existing.id }, data: { status: "UPLOADED" } });
+    } else {
+      await prisma.kycDocument.create({
+        data: {
+          organization_id: organizationId,
+          kyc_profile_id: profile.id,
+          document_type: documentType,
+          storage_key: `${organizationId}/${EARNINGS_TEST_PREFIX}${documentType.toLowerCase()}-${profile.id}`,
+          filename: `${documentType.toLowerCase()}.pdf`,
+          mime_type: "application/pdf",
+          size_bytes: 1024,
+          status: "UPLOADED",
+        },
+      });
+    }
+  }
+
+  return profile;
+}
+
 /** Deletes every row this fixture module could have created, in FK-safe order. */
 export async function cleanupEarningsFixtures(app: INestApplication): Promise<void> {
   const prisma = app.get(PrismaService);
@@ -242,5 +297,11 @@ export async function cleanupEarningsFixtures(app: INestApplication): Promise<vo
     await prisma.projectAllocation
       .deleteMany({ where: { OR: [{ created_by: { in: testUserIds } }, { approved_by: { in: testUserIds } }] } })
       .catch(() => {});
+    const kycProfiles = await prisma.kycProfile.findMany({ where: { user_id: { in: testUserIds } }, select: { id: true } });
+    const kycProfileIds = kycProfiles.map((p) => p.id);
+    if (kycProfileIds.length > 0) {
+      await prisma.kycDocument.deleteMany({ where: { kyc_profile_id: { in: kycProfileIds } } }).catch(() => {});
+      await prisma.kycProfile.deleteMany({ where: { id: { in: kycProfileIds } } }).catch(() => {});
+    }
   }
 }

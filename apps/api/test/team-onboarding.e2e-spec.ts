@@ -300,38 +300,30 @@ describe("K5: TEAM_MEMBER onboarding KYC/payout gate (e2e)", () => {
     expect(complete.status).toBe(200);
   });
 
-  it("TEAM_MEMBER without KYC cannot complete onboarding", async () => {
+  // K5 onboarding redesign: financial KYC (PAN, government ID, documents,
+  // Finance review) is deliberately NOT part of first-run onboarding
+  // anymore — it's gated at first withdrawal instead (see
+  // earnings-payouts.e2e-spec.ts's "KYC required for withdrawal" suite).
+  // Every one of these proves KYC status/documents/absence never blocks
+  // `POST /auth/onboarding/complete`, as long as payout is complete.
+
+  it("TEAM_MEMBER with no KYC profile at all can complete onboarding", async () => {
     const session = await loginUnonboardedTeamMember(app, "nokyc");
     await seedPayout(app, session, "complete");
     const res = await attemptComplete(app, session);
-    expect(res.status).toBe(422);
-    expectIncomplete(res.body, "KYC_INCOMPLETE", "kyc_profile");
-  });
-
-  it("TEAM_MEMBER with DRAFT KYC cannot complete onboarding", async () => {
-    const session = await loginUnonboardedTeamMember(app, "draft");
-    await seedKyc(app, session, { status: KycStatus.DRAFT });
-    await seedPayout(app, session, "complete");
-    const res = await attemptComplete(app, session);
-    expect(res.status).toBe(422);
-    expectIncomplete(res.body, "KYC_INCOMPLETE", "personal_information");
-  });
-
-  it("TEAM_MEMBER with REJECTED KYC cannot complete onboarding", async () => {
-    const session = await loginUnonboardedTeamMember(app, "rejected");
-    await seedKyc(app, session, { status: KycStatus.REJECTED });
-    await seedPayout(app, session, "complete");
-    const res = await attemptComplete(app, session);
-    expect(res.status).toBe(422);
-    expectIncomplete(res.body, "KYC_INCOMPLETE", "kyc_status");
+    expect(res.status).toBe(200);
+    expect(res.body.onboardedAt).toBeTruthy();
   });
 
   it.each([
+    [KycStatus.NOT_STARTED, "notstarted"],
+    [KycStatus.DRAFT, "draft"],
     [KycStatus.SUBMITTED, "submitted"],
     [KycStatus.UNDER_REVIEW, "under-review"],
     [KycStatus.VERIFIED, "verified"],
+    [KycStatus.REJECTED, "rejected"],
   ] as const)(
-    "TEAM_MEMBER with %s KYC can complete onboarding",
+    "TEAM_MEMBER with KYC status %s can complete onboarding (KYC status never blocks)",
     async (status, suffix) => {
       const session = await loginUnonboardedTeamMember(app, suffix);
       await seedKyc(app, session, { status });
@@ -342,52 +334,28 @@ describe("K5: TEAM_MEMBER onboarding KYC/payout gate (e2e)", () => {
     }
   );
 
-  it("Missing PAN_CARD blocks completion", async () => {
-    const session = await loginUnonboardedTeamMember(app, "nopan");
+  it("Missing PAN_CARD/GOVERNMENT_ID documents never block completion", async () => {
+    const session = await loginUnonboardedTeamMember(app, "nodocs");
     await seedKyc(app, session, {
       status: KycStatus.UNDER_REVIEW,
       panDoc: false,
-    });
-    await seedPayout(app, session, "complete");
-    const res = await attemptComplete(app, session);
-    expect(res.status).toBe(422);
-    expectIncomplete(res.body, "KYC_INCOMPLETE", "PAN_CARD");
-  });
-
-  it("Missing GOVERNMENT_ID blocks completion", async () => {
-    const session = await loginUnonboardedTeamMember(app, "nogov");
-    await seedKyc(app, session, {
-      status: KycStatus.UNDER_REVIEW,
       govDoc: false,
     });
     await seedPayout(app, session, "complete");
     const res = await attemptComplete(app, session);
-    expect(res.status).toBe(422);
-    expectIncomplete(res.body, "KYC_INCOMPLETE", "GOVERNMENT_ID");
+    expect(res.status).toBe(200);
   });
 
-  it("REMOVED PAN_CARD blocks completion", async () => {
-    const session = await loginUnonboardedTeamMember(app, "rmpan");
+  it("REMOVED KYC documents never block completion", async () => {
+    const session = await loginUnonboardedTeamMember(app, "rmdocs");
     await seedKyc(app, session, {
       status: KycStatus.UNDER_REVIEW,
       panDocStatus: KycDocumentStatus.REMOVED,
-    });
-    await seedPayout(app, session, "complete");
-    const res = await attemptComplete(app, session);
-    expect(res.status).toBe(422);
-    expectIncomplete(res.body, "KYC_INCOMPLETE", "PAN_CARD");
-  });
-
-  it("REMOVED GOVERNMENT_ID blocks completion", async () => {
-    const session = await loginUnonboardedTeamMember(app, "rmgov");
-    await seedKyc(app, session, {
-      status: KycStatus.UNDER_REVIEW,
       govDocStatus: KycDocumentStatus.REMOVED,
     });
     await seedPayout(app, session, "complete");
     const res = await attemptComplete(app, session);
-    expect(res.status).toBe(422);
-    expectIncomplete(res.body, "KYC_INCOMPLETE", "GOVERNMENT_ID");
+    expect(res.status).toBe(200);
   });
 
   it("Missing payout profile blocks completion", async () => {
@@ -494,12 +462,16 @@ describe("K5: TEAM_MEMBER onboarding KYC/payout gate (e2e)", () => {
     expect(res.body.error.code).toBe("CSRF_TOKEN_INVALID");
   });
 
-  it("No sensitive data leaks in errors", async () => {
+  it("No sensitive data leaks in errors (a payout-incomplete 422 with KYC data seeded alongside it)", async () => {
     const session = await loginUnonboardedTeamMember(app, "leak");
+    // KYC status is irrelevant to onboarding now — seed it anyway (with
+    // real PAN/government ID/bank-shaped values) purely to prove none of
+    // it leaks into the *payout*-incompleteness error below.
     await seedKyc(app, session, { status: KycStatus.DRAFT });
-    await seedPayout(app, session, "complete");
+    await seedPayout(app, session, "bank_incomplete");
     const res = await attemptComplete(app, session);
     expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe("ONBOARDING_REQUIREMENTS_INCOMPLETE");
     const serialized = JSON.stringify(res.body);
     expect(serialized).not.toContain("ABCDE1234F");
     expect(serialized).not.toContain("1234-5678-9012");
