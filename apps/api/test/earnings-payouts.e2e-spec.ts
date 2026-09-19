@@ -456,6 +456,169 @@ describe("K12 — Team Earnings, Withdrawals & Payouts (e2e)", () => {
     });
   });
 
+  describe("RecoveryOwed — Finance-only exposure on the payout detail view", () => {
+    it("no recovery: recoveryOwed is 0.00 when paid does not exceed net earned", async () => {
+      const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-recovery-none" });
+      await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      await grantApprovedEarnings(beneficiary, "1000.00");
+      const created = await request(app.getHttpServer())
+        .post("/api/v1/team/payouts")
+        .set(earningsMutateHeaders(beneficiary))
+        .send({ amount: "500.00" });
+      await advancePayoutToPaid(created.body.id);
+
+      const detail = await request(app.getHttpServer())
+        .get(`/api/v1/payouts/${created.body.id}`)
+        .set(authHeaders(finance));
+      expect(detail.status).toBe(200);
+      expect(detail.body.memberBalance).toEqual({
+        lifetimeEarned: "1000.00",
+        pending: "0.00",
+        lifetimePaid: "500.00",
+        available: "500.00",
+        recoveryOwed: "0.00",
+      });
+    });
+
+    it("partial recovery: a downward correction leaves recoveryOwed at the shortfall, never as a negative available balance", async () => {
+      const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-recovery-partial" });
+      await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      const { allocationId } = await grantApprovedEarnings(beneficiary, "5000.00");
+      const payoutReq = await request(app.getHttpServer())
+        .post("/api/v1/team/payouts")
+        .set(earningsMutateHeaders(beneficiary))
+        .send({ amount: "5000.00" });
+      await advancePayoutToPaid(payoutReq.body.id);
+
+      const adjustment = await request(app.getHttpServer())
+        .post(`/api/v1/project-allocations/${allocationId}/adjust`)
+        .set(earningsMutateHeaders(finance))
+        .send({});
+      const withLine = await request(app.getHttpServer())
+        .patch(`/api/v1/project-allocations/${adjustment.body.id}/lines`)
+        .set(authHeaders(finance))
+        .send({ version: adjustment.body.version, lines: [{ userId: beneficiary.userId, amount: "-2000.00" }] });
+      const approvedAdjustment = await request(app.getHttpServer())
+        .post(`/api/v1/project-allocations/${adjustment.body.id}/approve`)
+        .set(earningsMutateHeaders(finance))
+        .send({ version: withLine.body.version });
+      expect(approvedAdjustment.status).toBe(200);
+
+      const detail = await request(app.getHttpServer())
+        .get(`/api/v1/payouts/${payoutReq.body.id}`)
+        .set(authHeaders(finance));
+      // netEarned = 5000 - 2000 = 3000; paid = 5000 -> recoveryOwed = 5000 - 3000 = 2000; available floors at 0.
+      expect(detail.body.memberBalance).toEqual({
+        lifetimeEarned: "3000.00",
+        pending: "0.00",
+        lifetimePaid: "5000.00",
+        available: "0.00",
+        recoveryOwed: "2000.00",
+      });
+    });
+
+    it("full recovery: correcting earnings all the way to zero makes recoveryOwed equal the entire amount paid", async () => {
+      const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-recovery-full" });
+      await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      const { allocationId } = await grantApprovedEarnings(beneficiary, "5000.00");
+      const payoutReq = await request(app.getHttpServer())
+        .post("/api/v1/team/payouts")
+        .set(earningsMutateHeaders(beneficiary))
+        .send({ amount: "5000.00" });
+      await advancePayoutToPaid(payoutReq.body.id);
+
+      const adjustment = await request(app.getHttpServer())
+        .post(`/api/v1/project-allocations/${allocationId}/adjust`)
+        .set(earningsMutateHeaders(finance))
+        .send({});
+      const withLine = await request(app.getHttpServer())
+        .patch(`/api/v1/project-allocations/${adjustment.body.id}/lines`)
+        .set(authHeaders(finance))
+        .send({ version: adjustment.body.version, lines: [{ userId: beneficiary.userId, amount: "-5000.00" }] });
+      await request(app.getHttpServer())
+        .post(`/api/v1/project-allocations/${adjustment.body.id}/approve`)
+        .set(earningsMutateHeaders(finance))
+        .send({ version: withLine.body.version });
+
+      const detail = await request(app.getHttpServer())
+        .get(`/api/v1/payouts/${payoutReq.body.id}`)
+        .set(authHeaders(finance));
+      expect(detail.body.memberBalance).toEqual({
+        lifetimeEarned: "0.00",
+        pending: "0.00",
+        lifetimePaid: "5000.00",
+        available: "0.00",
+        recoveryOwed: "5000.00",
+      });
+    });
+
+    it("future earnings transparently reduce recoveryOwed, with no direct cash clawback endpoint or field", async () => {
+      const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-recovery-offset" });
+      await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      const { allocationId } = await grantApprovedEarnings(beneficiary, "5000.00");
+      const payoutReq = await request(app.getHttpServer())
+        .post("/api/v1/team/payouts")
+        .set(earningsMutateHeaders(beneficiary))
+        .send({ amount: "5000.00" });
+      await advancePayoutToPaid(payoutReq.body.id);
+
+      const adjustment = await request(app.getHttpServer())
+        .post(`/api/v1/project-allocations/${allocationId}/adjust`)
+        .set(earningsMutateHeaders(finance))
+        .send({});
+      const withLine = await request(app.getHttpServer())
+        .patch(`/api/v1/project-allocations/${adjustment.body.id}/lines`)
+        .set(authHeaders(finance))
+        .send({ version: adjustment.body.version, lines: [{ userId: beneficiary.userId, amount: "-2000.00" }] });
+      await request(app.getHttpServer())
+        .post(`/api/v1/project-allocations/${adjustment.body.id}/approve`)
+        .set(earningsMutateHeaders(finance))
+        .send({ version: withLine.body.version });
+
+      const afterClawback = await request(app.getHttpServer())
+        .get(`/api/v1/payouts/${payoutReq.body.id}`)
+        .set(authHeaders(finance));
+      expect(afterClawback.body.memberBalance.recoveryOwed).toBe("2000.00");
+
+      // 1500 of new earnings only partially offsets the 2000 owed — still owed, reduced, and Available stays at 0.
+      await grantApprovedEarnings(beneficiary, "1500.00");
+      const afterPartialOffset = await request(app.getHttpServer())
+        .get(`/api/v1/payouts/${payoutReq.body.id}`)
+        .set(authHeaders(finance));
+      expect(afterPartialOffset.body.memberBalance.recoveryOwed).toBe("500.00");
+      expect(afterPartialOffset.body.memberBalance.available).toBe("0.00");
+
+      // A further 1000 of new earnings fully clears the remaining 500 owed — no cash clawback occurred anywhere,
+      // this is purely a consequence of the Available/RecoveryOwed formulas netting against lifetimeEarned.
+      await grantApprovedEarnings(beneficiary, "1000.00");
+      const afterFullOffset = await request(app.getHttpServer())
+        .get(`/api/v1/payouts/${payoutReq.body.id}`)
+        .set(authHeaders(finance));
+      expect(afterFullOffset.body.memberBalance.recoveryOwed).toBe("0.00");
+      expect(afterFullOffset.body.memberBalance.available).toBe("500.00");
+    });
+
+    it("the member's own payout view never includes memberBalance or recoveryOwed", async () => {
+      const beneficiary = await loginSession(app, "TEAM_MEMBER", { emailSuffix: "k12-recovery-hidden" });
+      await upsertCompletePayoutProfile(app, finance.organizationId, beneficiary.userId);
+      await grantApprovedEarnings(beneficiary, "1000.00");
+      const created = await request(app.getHttpServer())
+        .post("/api/v1/team/payouts")
+        .set(earningsMutateHeaders(beneficiary))
+        .send({ amount: "500.00" });
+
+      const ownView = await request(app.getHttpServer())
+        .get(`/api/v1/team/payouts/${created.body.id}`)
+        .set(authHeaders(beneficiary));
+      expect(ownView.status).toBe(200);
+      expect(ownView.body.memberBalance).toBeUndefined();
+      expect(JSON.stringify(ownView.body)).not.toContain("recoveryOwed");
+
+      const ownList = await request(app.getHttpServer()).get("/api/v1/team/payouts").set(authHeaders(beneficiary));
+      expect(JSON.stringify(ownList.body)).not.toContain("recoveryOwed");
+    });
+  });
+
   /** Drives a freshly-REQUESTED payout through review -> approve -> process (leaves it PROCESSING, version 3). */
   async function advancePayoutToProcessing(pending: { payoutId: string }): Promise<{ payoutId: string; version: number }> {
     const reviewed = await request(app.getHttpServer())

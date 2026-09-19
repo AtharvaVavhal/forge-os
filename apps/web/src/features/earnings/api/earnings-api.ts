@@ -7,6 +7,7 @@ import {
   parseTeamEarningsSummary,
   parseTeamPayoutList,
   parseTeamPayoutRequest,
+  parseTeamPayoutRequestFinanceView,
   parseTeamPayoutRequestList,
 } from "./parse";
 import { earningsPaths } from "./paths";
@@ -91,31 +92,32 @@ export async function listPayouts(query: { page?: number; pageSize?: number; sta
   return requireParsed(parseTeamPayoutList(payload), "payout list");
 }
 
+/** Finance-only response — includes `memberBalance` (with `recoveryOwed`); never used for `/team/payouts*`. */
 export async function getPayout(id: string) {
   const payload = await apiClient.get<unknown>(earningsPaths.payout(id));
-  return requireParsed(parseTeamPayoutRequest(payload), "payout");
+  return requireParsed(parseTeamPayoutRequestFinanceView(payload), "payout");
 }
 
 export async function reviewPayout(id: string, version: number) {
   const payload = await browserMutate<unknown>("POST", earningsPaths.reviewPayout(id), { body: { version } });
-  return requireParsed(parseTeamPayoutRequest(payload), "payout");
+  return requireParsed(parseTeamPayoutRequestFinanceView(payload), "payout");
 }
 
 export async function approvePayout(id: string, version: number) {
   const payload = await browserMutate<unknown>("POST", earningsPaths.approvePayout(id), { body: { version } });
-  return requireParsed(parseTeamPayoutRequest(payload), "payout");
+  return requireParsed(parseTeamPayoutRequestFinanceView(payload), "payout");
 }
 
 export async function rejectPayout(id: string, version: number, reason: string) {
   const payload = await browserMutate<unknown>("POST", earningsPaths.rejectPayout(id), { body: { version, reason } });
-  return requireParsed(parseTeamPayoutRequest(payload), "payout");
+  return requireParsed(parseTeamPayoutRequestFinanceView(payload), "payout");
 }
 
 export async function processPayout(id: string, version: number, processor?: string) {
   const payload = await browserMutate<unknown>("POST", earningsPaths.processPayout(id), {
     body: { version, processor },
   });
-  return requireParsed(parseTeamPayoutRequest(payload), "payout");
+  return requireParsed(parseTeamPayoutRequestFinanceView(payload), "payout");
 }
 
 export async function markPayoutPaid(id: string, externalReference: string) {
@@ -123,14 +125,14 @@ export async function markPayoutPaid(id: string, externalReference: string) {
     body: { externalReference },
     idempotencyKey: newIdempotencyKey(),
   });
-  return requireParsed(parseTeamPayoutRequest(payload), "payout");
+  return requireParsed(parseTeamPayoutRequestFinanceView(payload), "payout");
 }
 
 export async function markPayoutFailed(id: string, version: number, reason: string) {
   const payload = await browserMutate<unknown>("POST", earningsPaths.markPayoutFailed(id), {
     body: { version, reason },
   });
-  return requireParsed(parseTeamPayoutRequest(payload), "payout");
+  return requireParsed(parseTeamPayoutRequestFinanceView(payload), "payout");
 }
 
 // ── Team member self-service ─────────────────────────────────────────────

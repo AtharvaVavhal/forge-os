@@ -22,7 +22,9 @@ import {
   type TeamEarningsSummary,
   type TeamPayoutDestination,
   type TeamPayoutListItem,
+  type TeamPayoutMemberBalance,
   type TeamPayoutRequest,
+  type TeamPayoutRequestFinanceView,
 } from "./types";
 
 function inSet<T extends string>(value: unknown, allowed: readonly T[]): T | null {
@@ -213,6 +215,28 @@ export function parseTeamPayoutRequest(payload: unknown): TeamPayoutRequest | nu
     createdAt: asIsoDate(readField(node, "createdAt", "created_at")) ?? "",
     updatedAt: asIsoDate(readField(node, "updatedAt", "updated_at")) ?? "",
   };
+}
+
+function parseTeamPayoutMemberBalance(value: unknown): TeamPayoutMemberBalance | null {
+  if (!isRecord(value)) return null;
+  const lifetimeEarned = requireMoney(readField(value, "lifetimeEarned", "lifetime_earned"));
+  const pending = requireMoney(value.pending);
+  const lifetimePaid = requireMoney(readField(value, "lifetimePaid", "lifetime_paid"));
+  const available = requireMoney(value.available);
+  const recoveryOwed = requireMoney(readField(value, "recoveryOwed", "recovery_owed"));
+  if (lifetimeEarned === null || pending === null || lifetimePaid === null || available === null || recoveryOwed === null) {
+    return null;
+  }
+  return { lifetimeEarned, pending, lifetimePaid, available, recoveryOwed };
+}
+
+/** Finance-only — parses the `memberBalance` (including `recoveryOwed`) that only `GET/POST /payouts*` responses carry. */
+export function parseTeamPayoutRequestFinanceView(payload: unknown): TeamPayoutRequestFinanceView | null {
+  const base = parseTeamPayoutRequest(payload);
+  const node = isRecord(unwrapData(payload)) ? (unwrapData(payload) as Record<string, unknown>) : null;
+  const memberBalance = node ? parseTeamPayoutMemberBalance(readField(node, "memberBalance", "member_balance")) : null;
+  if (!base || !memberBalance) return null;
+  return { ...base, memberBalance };
 }
 
 export function parseTeamPayoutListItem(value: unknown): TeamPayoutListItem | null {

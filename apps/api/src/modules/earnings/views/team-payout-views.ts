@@ -1,4 +1,5 @@
 import type { PayoutMethod, Prisma, TeamPayoutRequest, TeamPayoutStatus, User } from "@prisma/client";
+import type { MemberEarningsBalance } from "../services/earnings-balance.service";
 
 type ActorRef = Pick<User, "id" | "name" | "email">;
 
@@ -38,6 +39,47 @@ export interface TeamPayoutRequestView {
   version: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Finance-only extension of `TeamPayoutRequestView` — adds the requesting
+ * member's full balance breakdown, computed live from the same
+ * `EarningsBalanceService.computeBalance` used by `GET /team/earnings`
+ * (no separate balance table). This is the ONE place `recoveryOwed` is
+ * exposed over HTTP: `TeamPayoutRequestView` (returned to the member's own
+ * `GET /team/payouts*`) deliberately excludes it, and this type is never
+ * used by any team-self-service response.
+ */
+export interface TeamPayoutMemberBalance {
+  lifetimeEarned: Prisma.Decimal;
+  pending: Prisma.Decimal;
+  lifetimePaid: Prisma.Decimal;
+  available: Prisma.Decimal;
+  recoveryOwed: Prisma.Decimal;
+}
+
+export interface TeamPayoutRequestFinanceView extends TeamPayoutRequestView {
+  memberBalance: TeamPayoutMemberBalance;
+}
+
+export function toTeamPayoutRequestFinanceView(
+  request: TeamPayoutRequest & {
+    user: Pick<User, "id" | "name" | "email">;
+    reviewer: ActorRef | null;
+    approver: ActorRef | null;
+  },
+  balance: MemberEarningsBalance
+): TeamPayoutRequestFinanceView {
+  return {
+    ...toTeamPayoutRequestView(request),
+    memberBalance: {
+      lifetimeEarned: balance.lifetimeEarned,
+      pending: balance.pending,
+      lifetimePaid: balance.lifetimePaid,
+      available: balance.available,
+      recoveryOwed: balance.recoveryOwed,
+    },
+  };
 }
 
 export interface TeamPayoutListItem {

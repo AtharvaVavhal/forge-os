@@ -5,13 +5,14 @@ import { buildOffsetMeta, offsetSkipTake, type ListEnvelope } from "../../../com
 import { AuditService } from "../../shared/audit.service";
 import type { AuthenticatedUser } from "../../auth/types/authenticated-request.interface";
 import { EARNINGS_AUDIT_ACTIONS } from "./earnings-audit-actions";
+import { EarningsBalanceService } from "./earnings-balance.service";
 import { assertValidTeamPayoutTransition } from "../policies/team-payout-state-machine";
 import {
   toTeamPayoutAuditSnapshot,
   toTeamPayoutListItem,
-  toTeamPayoutRequestView,
+  toTeamPayoutRequestFinanceView,
   type TeamPayoutListItem,
-  type TeamPayoutRequestView,
+  type TeamPayoutRequestFinanceView,
 } from "../views/team-payout-views";
 import type {
   ApproveTeamPayoutDto,
@@ -33,11 +34,17 @@ type PayoutDetail = Prisma.TeamPayoutRequestGetPayload<{ include: typeof DETAIL_
 
 /**
  * Finance-facing side of K12's payout review pipeline (`GET/POST
- * /payouts*`, all gated `finance.manage` except list/get which allow
- * `finance.read` too — see PayoutsController). The member-facing side
- * (creation, own-scoped reads) lives in TeamEarningsService — this service
- * never creates a TeamPayoutRequest, only transitions one that already
- * exists.
+ * /payouts*`, all gated `finance.manage` — including GET, per the frozen
+ * instruction "Payout GET: finance.manage ONLY"; see PayoutsController).
+ * The member-facing side (creation, own-scoped reads) lives in
+ * TeamEarningsService — this service never creates a TeamPayoutRequest,
+ * only transitions one that already exists.
+ *
+ * Every single-record response here goes through `toFinanceView`, which
+ * attaches `memberBalance` (including `recoveryOwed`) via
+ * `EarningsBalanceService.computeBalance` — this is the one place
+ * `recoveryOwed` is exposed over HTTP. TeamEarningsService's member-facing
+ * views never include it.
  *
  * `review`/`approve`/`process`/`mark-failed` are guarded by an explicit
  * `{ status: <expected>, version: dto.version }` `updateMany` (status +
@@ -53,7 +60,8 @@ type PayoutDetail = Prisma.TeamPayoutRequestGetPayload<{ include: typeof DETAIL_
 export class TeamPayoutsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly balance: EarningsBalanceService
   ) {}
 
   async list(actor: AuthenticatedUser, query: ListPayoutsQueryDto): Promise<ListEnvelope<TeamPayoutListItem>> {
@@ -80,12 +88,19 @@ export class TeamPayoutsService {
     };
   }
 
-  async get(actor: AuthenticatedUser, id: string): Promise<TeamPayoutRequestView> {
+  /**
+   * `GET /payouts/:id` — the one place `recoveryOwed` is exposed over
+   * HTTP, via `memberBalance` (see `toTeamPayoutRequestFinanceView`).
+   * `finance.manage`-gated at the controller; TEAM_MEMBER's own
+   * `GET /team/payouts/:id` (TeamEarningsService.getOwnPayout) uses the
+   * plain `TeamPayoutRequestView` and never sees this field.
+   */
+  async get(actor: AuthenticatedUser, id: string): Promise<TeamPayoutRequestFinanceView> {
     const payout = await this.findOrgPayoutOrThrow(actor, id);
-    return toTeamPayoutRequestView(payout);
+    return this.toFinanceView(payout);
   }
 
-  async review(actor: AuthenticatedUser, id: string, dto: ReviewTeamPayoutDto): Promise<TeamPayoutRequestView> {
+  async review(actor: AuthenticatedUser, id: string, dto: ReviewTeamPayoutDto): Promise<TeamPayoutRequestFinanceView> {
     return this.transition(actor, id, {
       dtoVersion: dto.version,
       expectedStatus: TeamPayoutStatus.REQUESTED,
@@ -95,7 +110,7 @@ export class TeamPayoutsService {
     });
   }
 
-  async approve(actor: AuthenticatedUser, id: string, dto: ApproveTeamPayoutDto): Promise<TeamPayoutRequestView> {
+  async approve(actor: AuthenticatedUser, id: string, dto: ApproveTeamPayoutDto): Promise<TeamPayoutRequestFinanceView> {
     return this.transition(actor, id, {
       dtoVersion: dto.version,
       expectedStatus: TeamPayoutStatus.UNDER_REVIEW,
@@ -106,7 +121,7 @@ export class TeamPayoutsService {
   }
 
   /** REQUESTED or UNDER_REVIEW -> REJECTED — the only transition with two valid source statuses, so it can't use the single-`expectedStatus` `transition()` helper. */
-  async reject(actor: AuthenticatedUser, id: string, dto: RejectTeamPayoutDto): Promise<TeamPayoutRequestView> {
+  async reject(actor: AuthenticatedUser, id: string, dto: RejectTeamPayoutDto): Promise<TeamPayoutRequestFinanceView> {
     const preCheck = await this.findOrgPayoutOrThrow(actor, id);
     assertValidTeamPayoutTransition(preCheck.status, TeamPayoutStatus.REJECTED);
 
@@ -132,11 +147,11 @@ export class TeamPayoutsService {
     });
 
     await this.recordAudit(actor, EARNINGS_AUDIT_ACTIONS.TEAM_PAYOUT_REJECTED, updated);
-    return toTeamPayoutRequestView(updated);
+    return this.toFinanceView(updated);
   }
 
   /** APPROVED or FAILED -> PROCESSING (retry). */
-  async process(actor: AuthenticatedUser, id: string, dto: ProcessTeamPayoutDto): Promise<TeamPayoutRequestView> {
+  async process(actor: AuthenticatedUser, id: string, dto: ProcessTeamPayoutDto): Promise<TeamPayoutRequestFinanceView> {
     const preCheck = await this.findOrgPayoutOrThrow(actor, id);
     assertValidTeamPayoutTransition(preCheck.status, TeamPayoutStatus.PROCESSING);
 
@@ -164,7 +179,7 @@ export class TeamPayoutsService {
     });
 
     await this.recordAudit(actor, EARNINGS_AUDIT_ACTIONS.TEAM_PAYOUT_PROCESSING_STARTED, updated);
-    return toTeamPayoutRequestView(updated);
+    return this.toFinanceView(updated);
   }
 
   /**
@@ -174,10 +189,10 @@ export class TeamPayoutsService {
    * unchanged (200) rather than a conflict — Document instruction: "Duplicate
    * mark-paid on an already PAID payout must return 200 unchanged."
    */
-  async markPaid(actor: AuthenticatedUser, id: string, dto: MarkPaidTeamPayoutDto): Promise<TeamPayoutRequestView> {
+  async markPaid(actor: AuthenticatedUser, id: string, dto: MarkPaidTeamPayoutDto): Promise<TeamPayoutRequestFinanceView> {
     const preCheck = await this.findOrgPayoutOrThrow(actor, id);
     if (preCheck.status === TeamPayoutStatus.PAID) {
-      return toTeamPayoutRequestView(preCheck);
+      return this.toFinanceView(preCheck);
     }
     assertValidTeamPayoutTransition(preCheck.status, TeamPayoutStatus.PAID);
 
@@ -209,10 +224,10 @@ export class TeamPayoutsService {
     if (changed) {
       await this.recordAudit(actor, EARNINGS_AUDIT_ACTIONS.TEAM_PAYOUT_PAID, payout);
     }
-    return toTeamPayoutRequestView(payout);
+    return this.toFinanceView(payout);
   }
 
-  async markFailed(actor: AuthenticatedUser, id: string, dto: MarkFailedTeamPayoutDto): Promise<TeamPayoutRequestView> {
+  async markFailed(actor: AuthenticatedUser, id: string, dto: MarkFailedTeamPayoutDto): Promise<TeamPayoutRequestFinanceView> {
     return this.transition(actor, id, {
       dtoVersion: dto.version,
       expectedStatus: TeamPayoutStatus.PROCESSING,
@@ -233,7 +248,7 @@ export class TeamPayoutsService {
       auditAction: string;
       data: Prisma.TeamPayoutRequestUncheckedUpdateManyInput;
     }
-  ): Promise<TeamPayoutRequestView> {
+  ): Promise<TeamPayoutRequestFinanceView> {
     const preCheck = await this.findOrgPayoutOrThrow(actor, id);
     assertValidTeamPayoutTransition(preCheck.status, opts.targetStatus);
 
@@ -254,7 +269,13 @@ export class TeamPayoutsService {
     });
 
     await this.recordAudit(actor, opts.auditAction, updated);
-    return toTeamPayoutRequestView(updated);
+    return this.toFinanceView(updated);
+  }
+
+  /** `recoveryOwed` (and the rest of the balance breakdown) computed live via `EarningsBalanceService` — no separate balance table, matches `GET /team/earnings`'s own computation exactly. */
+  private async toFinanceView(payout: PayoutDetail): Promise<TeamPayoutRequestFinanceView> {
+    const memberBalance = await this.balance.computeBalance(this.prisma, payout.organization_id, payout.user_id);
+    return toTeamPayoutRequestFinanceView(payout, memberBalance);
   }
 
   private assertVersion(current: number, expected: number): void {

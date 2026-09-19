@@ -39,7 +39,7 @@ import {
   canReviewPayout,
   isTeamPayoutTerminal,
 } from "../api/lifecycle";
-import type { TeamPayoutRequest, TeamPayoutStatus } from "../api/types";
+import type { TeamPayoutRequestFinanceView, TeamPayoutStatus } from "../api/types";
 
 const statusTone: Record<TeamPayoutStatus, StatusTone> = {
   REQUESTED: "pending",
@@ -111,7 +111,7 @@ function PayoutDetailInner({ id }: { id: string }) {
   });
 
   function onSuccess(title: string) {
-    return (payout: TeamPayoutRequest) => {
+    return (payout: TeamPayoutRequestFinanceView) => {
       queryClient.setQueryData(earningsKeys.payouts.detail(id), payout);
       queryClient.invalidateQueries({ queryKey: earningsKeys.payouts.all });
       pushToast({ title, tone: "success" });
@@ -215,6 +215,29 @@ function PayoutDetailInner({ id }: { id: string }) {
       </div>
 
       <div className="flex max-w-3xl flex-col gap-6">
+        <Section title="Member balance">
+          <p className="type-helper text-steel">
+            Computed live from the same approved-allocation and payout records as the member&rsquo;s own Earnings tab —
+            Recovery Owed is Finance-only and is never shown to the member.
+          </p>
+          <FactList
+            items={[
+              { label: "Lifetime earned", value: <MoneyText value={payout.memberBalance.lifetimeEarned} /> },
+              { label: "Pending", value: <MoneyText value={payout.memberBalance.pending} /> },
+              { label: "Lifetime paid", value: <MoneyText value={payout.memberBalance.lifetimePaid} /> },
+              { label: "Available", value: <MoneyText value={payout.memberBalance.available} /> },
+              {
+                label: "Recovery owed",
+                value: (
+                  <span className={payout.memberBalance.recoveryOwed !== "0.00" ? "text-danger-deep" : undefined}>
+                    <MoneyText value={payout.memberBalance.recoveryOwed} />
+                  </span>
+                ),
+              },
+            ]}
+          />
+        </Section>
+
         <Section title="Request">
           <FactList
             items={[

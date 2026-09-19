@@ -103,6 +103,22 @@ export interface TeamPayoutRequest {
   updatedAt: string;
 }
 
+/**
+ * Finance-only balance breakdown attached to `GET/POST /payouts*` responses
+ * (never to `/team/payouts*`). `recoveryOwed` only ever appears here.
+ */
+export interface TeamPayoutMemberBalance {
+  lifetimeEarned: string;
+  pending: string;
+  lifetimePaid: string;
+  available: string;
+  recoveryOwed: string;
+}
+
+export interface TeamPayoutRequestFinanceView extends TeamPayoutRequest {
+  memberBalance: TeamPayoutMemberBalance;
+}
+
 export interface TeamPayoutListItem {
   id: string;
   userId: string;
